@@ -6,6 +6,7 @@
       "name": "monkey-code",
       "dependencies": {
         "js-yaml": "^4.1.0",
+        "sqlite-vss": "^0.1.2",
         "zod": "^3.22.0",
       },
       "devDependencies": {
@@ -27,6 +28,14 @@
     "bun-types": ["bun-types@1.3.10", "", { "dependencies": { "@types/node": "*" } }, "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="],
 
     "js-yaml": ["js-yaml@4.1.1", "", { "dependencies": { "argparse": "^2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA=="],
+
+    "sqlite-vss": ["sqlite-vss@0.1.2", "", { "optionalDependencies": { "sqlite-vss-darwin-arm64": "0.1.2", "sqlite-vss-darwin-x64": "0.1.2", "sqlite-vss-linux-x64": "0.1.2" } }, "sha512-MgTz3GLT04ckv1kaesbrsUU6/kcVsA6vGeCS/HO5d/8zKqCuZFCD0QlJaQnS6zwaMyPG++BO/uu40MMrMa0cow=="],
+
+    "sqlite-vss-darwin-arm64": ["sqlite-vss-darwin-arm64@0.1.2", "", { "os": "darwin", "cpu": "arm64" }, "sha512-zyDk9eg33nBABrUC4cqQ7el8KJaRPzsqp8Y/nGZ0CAt7o1PMqLoCOgREorill5MGiZEBmLqxdAgw0O2MFwq4mw=="],
+
+    "sqlite-vss-darwin-x64": ["sqlite-vss-darwin-x64@0.1.2", "", { "os": "darwin", "cpu": "x64" }, "sha512-w+ODOH2dNkyO6UaGclwC0jwNf/FBsKaE53XKJ7dFmpOvlvO0/9sA1stkWXygykRVWwa3UD8ow0qbQpRwdOFyqg=="],
+
+    "sqlite-vss-linux-x64": ["sqlite-vss-linux-x64@0.1.2", "", { "os": "linux", "cpu": "x64" }, "sha512-y1qktcHAZcfN1nYMcF5os/cCRRyaisaNc2C9I3ceLKLPAqUWIocsOdD5nNK/dIeGPag/QeT2ZItJ6uYWciLiAg=="],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
