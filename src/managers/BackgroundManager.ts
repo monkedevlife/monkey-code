@@ -107,6 +107,7 @@ export class BackgroundManager implements IBackgroundManager {
         throw new Error("Task was cancelled");
       }
       const proc = Bun.spawn(command.split(" "), { stdout: "pipe", stderr: "pipe", signal });
+      await proc.exited;
       const stdout = await new Response(proc.stdout).text();
       const stderr = await new Response(proc.stderr).text();
       const exitCode = proc.exitCode;
@@ -130,7 +131,7 @@ export class BackgroundManager implements IBackgroundManager {
     this.runningTasks.delete(taskId);
     const completedAt = Date.now();
     const outputText = error ? `${output}\nERROR: ${error}`.trim() : output;
-    const dbStatus = status === "cancelled" ? "failed" : status === "running" ? "in_progress" : status;
+    const dbStatus = status === "cancelled" ? "failed" : status;
     await this.sqlite.updateTaskStatus(taskId, dbStatus as "pending" | "in_progress" | "completed" | "failed", outputText, completedAt);
     const callback = this.notificationCallbacks.get(taskId);
     if (callback) {
@@ -188,7 +189,7 @@ export class BackgroundManager implements IBackgroundManager {
   async getStatus(taskId: string): Promise<Task | null> {
     const task = await this.sqlite.getTask(taskId);
     if (!task) return null;
-    const status: Task["status"] = task.status === "in_progress" ? "running" : task.status as Task["status"];
+    const status: Task["status"] = task.status as Task["status"];
     return {
       id: task.id,
       status,
@@ -208,19 +209,17 @@ export class BackgroundManager implements IBackgroundManager {
   async listTasks(filter?: TaskFilter): Promise<Task[]> {
     let tasks: Task[] = [];
     if (filter?.status) {
-      const dbStatus = filter.status === "running" ? "in_progress" : filter.status;
+      const dbStatus = filter.status;
       const dbTasks = await this.sqlite.getTasksByStatus(dbStatus as "pending" | "in_progress" | "completed" | "failed");
       tasks = dbTasks.map((t) => {
-        const taskStatus: Task["status"] = t.status === "in_progress" ? "running" : t.status as Task["status"];
-        return { id: t.id, status: taskStatus, command: t.command, output: t.output, createdAt: t.created_at, completedAt: t.completed_at };
+        return { id: t.id, status: t.status as Task["status"], command: t.command, output: t.output, createdAt: t.created_at, completedAt: t.completed_at };
       });
     } else {
       const dbStatuses = ["pending", "in_progress", "completed", "failed"] as const;
       for (const dbStatus of dbStatuses) {
         const dbTasks = await this.sqlite.getTasksByStatus(dbStatus);
         tasks.push(...dbTasks.map((t) => {
-          const taskStatus: Task["status"] = t.status === "in_progress" ? "running" : t.status as Task["status"];
-          return { id: t.id, status: taskStatus, command: t.command, output: t.output, createdAt: t.created_at, completedAt: t.completed_at };
+          return { id: t.id, status: t.status as Task["status"], command: t.command, output: t.output, createdAt: t.created_at, completedAt: t.completed_at };
         }));
       }
     }
