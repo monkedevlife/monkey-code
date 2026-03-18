@@ -3,7 +3,7 @@
 // Task and Background Task Management
 export interface Task {
   id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
   command: string;
   output?: string;
   error?: string;
@@ -41,6 +41,9 @@ export interface SkillDefinition {
   name: string;
   description?: string;
   mcpServers?: McpServerConfig[];
+  content?: string;
+  path?: string;
+  skillDir?: string;
 }
 
 // Tool Context for Hook Execution

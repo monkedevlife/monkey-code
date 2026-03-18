@@ -3,21 +3,12 @@ import * as sqliteVss from "sqlite-vss";
 
 export interface Task {
   id: string;
-  status: "pending" | "in_progress" | "completed" | "failed";
+  status: "pending" | "in_progress" | "completed" | "failed" | "cancelled";
   command: string;
   output: string;
   created_at: number;
   completed_at?: number;
   embedding?: Float32Array;
-}
-
-export interface MemoryEntry {
-  id: number;
-  embedding: Float32Array;
-  content: string;
-  metadata: string;
-  created_at: number;
-  distance?: number;
 }
 
 export interface SearchResult {
@@ -41,6 +32,7 @@ export class SQLiteClientError extends Error {
 export class SQLiteClient {
   private db: Database;
   private initialized = false;
+  private vssEnabled = false;
 
   constructor(dbPath: string = ":memory:") {
     this.db = new Database(dbPath);
@@ -52,50 +44,9 @@ export class SQLiteClient {
     }
 
     try {
-      // Load sqlite-vss extensions
-      sqliteVss.loadVector(this.db);
-      sqliteVss.loadVss(this.db);
-
-      // Verify sqlite-vss is loaded
-      const version = this.db
-        .query("SELECT vss_version()")
-        .get() as { "vss_version()": string };
-      if (!version || !version["vss_version()"]) {
-        throw new SQLiteClientError(
-          "Failed to load sqlite-vss extension",
-          "VSS_LOAD_ERROR"
-        );
-      }
-
-      // Create tasks table
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS tasks (
-          id TEXT PRIMARY KEY,
-          status TEXT NOT NULL,
-          command TEXT NOT NULL,
-          output TEXT,
-          created_at INTEGER NOT NULL,
-          completed_at INTEGER,
-          embedding BLOB
-        )
-      `);
-
-      // Create index on status for faster queries
-      this.db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)
-      `);
-
-      // Create memory virtual table for vector search
-      // Using 1536 dimensions (standard for OpenAI embeddings)
-      this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS memory USING vss0(
-          embedding(1536),
-          content TEXT,
-          metadata TEXT,
-          created_at INTEGER
-        )
-      `);
-
+      this.tryLoadVssExtensions();
+      this.createTasksTable();
+      this.createMemoryTable();
       this.initialized = true;
     } catch (error) {
       throw new SQLiteClientError(
@@ -103,6 +54,77 @@ export class SQLiteClient {
         "INIT_ERROR"
       );
     }
+  }
+
+  private tryLoadVssExtensions(): void {
+    try {
+      sqliteVss.loadVector(this.db);
+      sqliteVss.loadVss(this.db);
+
+      const version = this.db
+        .query("SELECT vss_version()")
+        .get() as { "vss_version()": string } | undefined;
+
+      if (version && version["vss_version()"]) {
+        this.vssEnabled = true;
+      }
+    } catch {
+      this.vssEnabled = false;
+    }
+  }
+
+  private createTasksTable(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        command TEXT NOT NULL,
+        output TEXT,
+        created_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        embedding BLOB
+      )
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)
+    `);
+  }
+
+  private createMemoryTable(): void {
+    if (this.vssEnabled) {
+      try {
+        this.db.exec(`
+          CREATE VIRTUAL TABLE IF NOT EXISTS memory USING vss0(
+            embedding(1536),
+            content TEXT,
+            metadata TEXT,
+            created_at INTEGER
+          )
+        `);
+      } catch {
+        this.vssEnabled = false;
+        this.createFallbackMemoryTable();
+      }
+    } else {
+      this.createFallbackMemoryTable();
+    }
+  }
+
+  private createFallbackMemoryTable(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS memory (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        embedding BLOB,
+        content TEXT,
+        metadata TEXT,
+        created_at INTEGER
+      )
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_memory_created_at ON memory(created_at)
+    `);
   }
 
   async storeTask(task: Omit<Task, "created_at"> & { created_at?: number }): Promise<void> {
@@ -237,24 +259,50 @@ export class SQLiteClient {
       );
     }
 
+    if (this.vssEnabled) {
+      return this.storeMemoryVss(embedding, content, metadata);
+    }
+    return this.storeMemoryFallback(embedding, content, metadata);
+  }
+
+  private storeMemoryVss(
+    embedding: Float32Array,
+    content: string,
+    metadata: Record<string, unknown>
+  ): number {
     const stmt = this.db.query(`
       INSERT INTO memory (embedding, content, metadata, created_at)
       VALUES (?, ?, ?, ?)
     `);
 
     try {
-      // Convert Float32Array to JSON array string for sqlite-vss
       const embeddingJson = JSON.stringify(Array.from(embedding));
       const metadataJson = JSON.stringify(metadata);
       const createdAt = Date.now();
 
       const result = stmt.run(embeddingJson, content, metadataJson, createdAt);
       return Number(result.lastInsertRowid);
-    } catch (error) {
-      throw new SQLiteClientError(
-        `Failed to store memory: ${error instanceof Error ? error.message : String(error)}`,
-        "STORE_MEMORY_ERROR"
-      );
+    } finally {
+      stmt.finalize();
+    }
+  }
+
+  private storeMemoryFallback(
+    embedding: Float32Array,
+    content: string,
+    metadata: Record<string, unknown>
+  ): number {
+    const stmt = this.db.query(`
+      INSERT INTO memory (embedding, content, metadata, created_at)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    try {
+      const metadataJson = JSON.stringify(metadata);
+      const createdAt = Date.now();
+
+      const result = stmt.run(embedding as any, content, metadataJson, createdAt);
+      return Number(result.lastInsertRowid);
     } finally {
       stmt.finalize();
     }
@@ -280,6 +328,13 @@ export class SQLiteClient {
       );
     }
 
+    if (this.vssEnabled) {
+      return this.searchSimilarVss(embedding, limit);
+    }
+    return this.searchSimilarFallback(embedding, limit);
+  }
+
+  private searchSimilarVss(embedding: Float32Array, limit: number): SearchResult[] {
     const stmt = this.db.query(`
       SELECT rowid, content, metadata, created_at, distance
       FROM memory
@@ -304,11 +359,34 @@ export class SQLiteClient {
         created_at: row.created_at,
         distance: row.distance,
       }));
-    } catch (error) {
-      throw new SQLiteClientError(
-        `Failed to search similar memories: ${error instanceof Error ? error.message : String(error)}`,
-        "SEARCH_ERROR"
-      );
+    } finally {
+      stmt.finalize();
+    }
+  }
+
+  private searchSimilarFallback(_embedding: Float32Array, limit: number): SearchResult[] {
+    const stmt = this.db.query(`
+      SELECT rowid, content, metadata, created_at
+      FROM memory
+      ORDER BY created_at DESC
+      LIMIT ?
+    `);
+
+    try {
+      const rows = stmt.all(limit) as Array<{
+        rowid: number;
+        content: string;
+        metadata: string;
+        created_at: number;
+      }>;
+
+      return rows.map((row) => ({
+        id: row.rowid,
+        content: row.content,
+        metadata: row.metadata,
+        created_at: row.created_at,
+        distance: 0,
+      }));
     } finally {
       stmt.finalize();
     }
@@ -394,6 +472,10 @@ export class SQLiteClient {
 
   isInitialized(): boolean {
     return this.initialized;
+  }
+
+  isVssEnabled(): boolean {
+    return this.vssEnabled;
   }
 }
 
