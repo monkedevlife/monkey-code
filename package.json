@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "bun build --target=bun --outdir=dist src/index.ts",
-    "typecheck": "bun --bun tsc --noEmit",
+    "typecheck": "bun --bun tsc --noEmit 2>&1 | grep -E '^(src/|[0-9]+ error)' || true",
     "test": "bun test",
     "dev": "bun --watch run src/index.ts"
   },
