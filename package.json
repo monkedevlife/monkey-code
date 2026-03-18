@@ -1,0 +1,26 @@
+{
+  "name": "monkey-code",
+  "version": "0.1.0",
+  "description": "OpenCode plugin for agent orchestration with background tasks, interactive PTY sessions, and skill-embedded MCP support",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "bun build --target=bun --outdir=dist src/index.ts",
+    "typecheck": "bun --bun tsc --noEmit",
+    "test": "bun test",
+    "dev": "bun --watch run src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^3.22.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.5",
+    "typescript": "^5.3.0"
+  },
+  "engine": {
+    "bun": ">=1.0.0"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.env
+.env.local
+.env.*.local
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+coverage/
+.nyc_output/
+*.db
+.bun/
+.opencode/monkey-code.json

@@ -1,0 +1,12 @@
+[build]
+target = "bun"
+outdir = "dist"
+sourcemap = "external"
+
+[test]
+root = "."
+prefix = "src/"
+
+[install]
+# Enable auto-install for node_modules
+auto = true
