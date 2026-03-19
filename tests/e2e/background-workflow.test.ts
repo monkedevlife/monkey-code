@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { delegateTask, type DelegateTaskInput, type OpenCodeClient } from "../../src/tools/delegate-task.js";
 import { getBackgroundOutput } from "../../src/tools/background-output.js";
 import { BackgroundManager } from "../../src/managers/BackgroundManager.js";
+import type { NotificationCallback } from "../../src/managers/BackgroundManager.js";
 import type { Task } from "../../src/types/index.js";
 
 interface MockTask {
@@ -18,6 +19,12 @@ interface MockTask {
   parentSessionId?: string;
 }
 
+type MockBackgroundManager = BackgroundManager & {
+  _tasks: Map<string, MockTask>;
+  _completeTask: (taskId: string, output: string) => void;
+  _failTask: (taskId: string, error: string) => void;
+};
+
 function createMockOpenCodeClient(): OpenCodeClient {
   let sessionCounter = 0;
   return {
@@ -33,9 +40,17 @@ function createMockOpenCodeClient(): OpenCodeClient {
   };
 }
 
-function createMockBackgroundManager(): BackgroundManager {
+function createMockBackgroundManager(): MockBackgroundManager {
   const tasks = new Map<string, MockTask>();
+  const notifications = new Map<string, NotificationCallback>();
   let taskCounter = 0;
+
+  const notify = (task: MockTask) => {
+    const callback = notifications.get(task.id);
+    if (callback) {
+      callback(task.id, task.status, task.output, task.error);
+    }
+  };
 
   const manager = {
     launch: mock((input: {
@@ -67,6 +82,7 @@ function createMockBackgroundManager(): BackgroundManager {
         task.status = "completed";
         task.output = `Completed: ${input.command}`;
         task.completedAt = Date.now();
+        notify(task);
       }, 100);
 
       return Promise.resolve(taskId);
@@ -76,6 +92,8 @@ function createMockBackgroundManager(): BackgroundManager {
       const task = tasks.get(taskId);
       if (task) {
         task.status = "cancelled";
+        task.completedAt = Date.now();
+        notify(task);
       }
       return Promise.resolve();
     }),
@@ -114,7 +132,9 @@ function createMockBackgroundManager(): BackgroundManager {
     getRunningCount: mock(() => 0),
     getConcurrencyLimit: mock(() => 5),
     setConcurrencyLimit: mock(() => {}),
-    onTaskComplete: mock(() => {}),
+    onTaskComplete: mock((taskId: string, callback: NotificationCallback) => {
+      notifications.set(taskId, callback);
+    }),
 
     _tasks: tasks,
     _completeTask: (taskId: string, output: string) => {
@@ -123,11 +143,22 @@ function createMockBackgroundManager(): BackgroundManager {
         task.status = "completed";
         task.output = output;
         task.completedAt = Date.now();
+        notify(task);
+      }
+    },
+    _failTask: (taskId: string, error: string) => {
+      const task = tasks.get(taskId);
+      if (task) {
+        task.status = "failed";
+        task.error = error;
+        task.completedAt = Date.now();
+        notify(task);
       }
     },
   } as unknown as BackgroundManager & {
     _tasks: Map<string, MockTask>;
     _completeTask: (taskId: string, output: string) => void;
+    _failTask: (taskId: string, error: string) => void;
   };
 
   return manager;
@@ -135,10 +166,7 @@ function createMockBackgroundManager(): BackgroundManager {
 
 describe("E2E: Background Task Workflow", () => {
   let mockClient: OpenCodeClient;
-  let mockManager: BackgroundManager & {
-    _tasks: Map<string, MockTask>;
-    _completeTask: (taskId: string, output: string) => void;
-  };
+  let mockManager: MockBackgroundManager;
 
   beforeEach(() => {
     mockClient = createMockOpenCodeClient();
@@ -294,14 +322,8 @@ describe("E2E: Background Task Workflow", () => {
   describe("Notification Verification", () => {
     it("should receive notification when task completes", async () => {
       let notificationReceived = false;
-      let notifiedTaskId: string | null = null;
-      let notifiedStatus: string | null = null;
-
-      mockManager.onTaskComplete = mock((taskId: string, status: Task["status"]) => {
-        notificationReceived = true;
-        notifiedTaskId = taskId;
-        notifiedStatus = status;
-      });
+      let notifiedTaskId = "";
+      let notifiedStatus: Task["status"] | undefined;
 
       const input: DelegateTaskInput = {
         task: "Deploy application",
@@ -314,13 +336,13 @@ describe("E2E: Background Task Workflow", () => {
         parentSessionId: "session_with_notifications",
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      mockManager.onTaskComplete(result.taskId, (taskId: string, status: Task["status"]) => {
+        notificationReceived = true;
+        notifiedTaskId = taskId;
+        notifiedStatus = status;
+      });
 
       mockManager._completeTask(result.taskId, "Deployment successful");
-
-      if (mockManager.onTaskComplete) {
-        mockManager.onTaskComplete(result.taskId, "completed");
-      }
 
       expect(notificationReceived).toBe(true);
       expect(notifiedTaskId).toBe(result.taskId);
@@ -329,12 +351,7 @@ describe("E2E: Background Task Workflow", () => {
 
     it("should handle task failure notification", async () => {
       let notificationReceived = false;
-      let notifiedStatus: string | null = null;
-
-      mockManager.onTaskComplete = mock((taskId: string, status: Task["status"]) => {
-        notificationReceived = true;
-        notifiedStatus = status;
-      });
+      let notifiedStatus: Task["status"] | undefined;
 
       const input: DelegateTaskInput = {
         task: "Run failing tests",
@@ -346,16 +363,12 @@ describe("E2E: Background Task Workflow", () => {
         client: mockClient,
       });
 
-      const task = mockManager._tasks.get(result.taskId);
-      if (task) {
-        task.status = "failed";
-        task.error = "Tests failed with exit code 1";
-        task.completedAt = Date.now();
-      }
+      mockManager.onTaskComplete(result.taskId, (_taskId: string, status: Task["status"]) => {
+        notificationReceived = true;
+        notifiedStatus = status;
+      });
 
-      if (mockManager.onTaskComplete) {
-        mockManager.onTaskComplete(result.taskId, "failed");
-      }
+      mockManager._failTask(result.taskId, "Tests failed with exit code 1");
 
       expect(notificationReceived).toBe(true);
       expect(notifiedStatus).toBe("failed");

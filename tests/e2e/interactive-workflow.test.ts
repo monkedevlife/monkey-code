@@ -14,11 +14,16 @@ interface MockSession extends InteractiveSession {
   outputs: string[];
 }
 
-function createMockInteractiveManager(): InteractiveManager {
+type MockInteractiveManager = InteractiveManager & {
+  _sessions: Map<string, MockSession>;
+  _addOutput: (sessionId: string, output: string) => void;
+};
+
+function createMockInteractiveManager(): MockInteractiveManager {
   const sessions = new Map<string, MockSession>();
   let sessionCounter = 0;
 
-  const manager = {
+  const manager: MockInteractiveManager = {
     isAvailable: mock(() => true),
 
     createSession: mock((command: string, cwd?: string) => {
@@ -106,19 +111,13 @@ function createMockInteractiveManager(): InteractiveManager {
         session.outputs.push(output);
       }
     },
-  } as unknown as InteractiveManager & {
-    _sessions: Map<string, MockSession>;
-    _addOutput: (sessionId: string, output: string) => void;
-  };
+  } as unknown as MockInteractiveManager;
 
   return manager;
 }
 
 describe("E2E: Interactive Bash Workflow", () => {
-  let mockManager: InteractiveManager & {
-    _sessions: Map<string, MockSession>;
-    _addOutput: (sessionId: string, output: string) => void;
-  };
+  let mockManager: MockInteractiveManager;
   let ctx: InteractiveBashContext;
 
   beforeEach(() => {

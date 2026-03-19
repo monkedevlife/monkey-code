@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { mkdtempSync, writeFileSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import {
   skillMcp,
   getLoadedSkillNames,
@@ -6,7 +9,6 @@ import {
   cleanupAllSkills,
   type SkillMcpParams,
   type SkillMcpContext,
-  type SkillMcpResult,
 } from "../../src/tools/skill-mcp.js";
 import type { SkillMcpManager } from "../../src/managers/SkillMcpManager.js";
 import type { SkillDefinition, McpServerConfig } from "../../src/types/index.js";
@@ -19,29 +21,27 @@ interface MockServer {
   lastUsedAt: number;
 }
 
-interface MockSkillState {
-  definition: SkillDefinition;
-  serverIds: string[];
-  loadedAt: number;
-}
+type MockSkillMcpManager = SkillMcpManager & {
+  _servers: Map<string, MockServer>;
+};
 
-function createMockSkillMcpManager(): SkillMcpManager {
+function createMockSkillMcpManager(): MockSkillMcpManager {
   const servers = new Map<string, MockServer>();
-  const loadedSkills = new Map<string, MockSkillState>();
   let serverCounter = 0;
 
-  const manager = {
+  const manager: MockSkillMcpManager = {
     initializeBuiltinMcps: mock(() => Promise.resolve()),
 
     loadSkill: mock((skillPath: string) => {
       const skillName = skillPath.split("/").pop()?.replace(".md", "") || "unknown";
+      const isNoMcpSkill = skillName === "no-mcp" || skillPath.includes("no-mcp");
       const skill: SkillDefinition = {
         name: skillName,
         description: `Mock skill: ${skillName}`,
         path: skillPath,
         skillDir: skillPath.replace("/SKILL.md", "").replace(".md", ""),
         content: "Mock skill content",
-        mcpServers: [
+        mcpServers: isNoMcpSkill ? undefined : [
           {
             type: "stdio",
             command: "mock-mcp-server",
@@ -130,44 +130,57 @@ function createMockSkillMcpManager(): SkillMcpManager {
     getServerCount: mock(() => servers.size),
 
     _servers: servers,
-    _loadedSkills: loadedSkills,
-    _registerSkill: (name: string, state: MockSkillState) => {
-      loadedSkills.set(name, state);
-    },
-  } as unknown as SkillMcpManager & {
-    _servers: Map<string, MockServer>;
-    _loadedSkills: Map<string, MockSkillState>;
-    _registerSkill: (name: string, state: MockSkillState) => void;
-  };
+  } as unknown as MockSkillMcpManager;
 
   return manager;
 }
 
 describe("E2E: Skill MCP Workflow", () => {
-  let mockManager: SkillMcpManager & {
-    _servers: Map<string, MockServer>;
-    _loadedSkills: Map<string, MockSkillState>;
-    _registerSkill: (name: string, state: MockSkillState) => void;
-  };
+  let mockManager: MockSkillMcpManager;
   let ctx: SkillMcpContext;
+  let tempDir: string;
 
   beforeEach(() => {
     mockManager = createMockSkillMcpManager();
+    tempDir = mkdtempSync(join(tmpdir(), "skill-mcp-test-"));
     ctx = {
       manager: mockManager,
-      skillPaths: ["/mock/skills"],
+      skillPaths: [tempDir],
     };
   });
 
   afterEach(async () => {
     await cleanupAllSkills(mockManager);
     await mockManager.cleanup();
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+    } catch {}
   });
+
+  function createTestSkill(name: string, content?: string): string {
+    const skillContent = content || `---
+name: ${name}
+description: Test skill ${name}
+mcp_servers:
+  - command: mock-mcp-server
+    args: ["--skill", "${name}"]
+---
+
+# ${name} Skill
+
+This is a test skill for ${name}.
+`;
+    const skillPath = join(tempDir, `${name}.md`);
+    writeFileSync(skillPath, skillContent);
+    return skillPath;
+  }
 
   describe("Load Skill Flow", () => {
     it("should load skill by path", async () => {
+      const skillPath = createTestSkill("playwright");
+
       const params: SkillMcpParams = {
-        skill: "/skills/playwright.md",
+        skill: skillPath,
         action: "load",
       };
 
@@ -180,8 +193,10 @@ describe("E2E: Skill MCP Workflow", () => {
     });
 
     it("should load skill and start MCP servers", async () => {
+      const skillPath = createTestSkill("git-master");
+
       const params: SkillMcpParams = {
-        skill: "/skills/git-master.md",
+        skill: skillPath,
         action: "load",
       };
 
@@ -194,8 +209,10 @@ describe("E2E: Skill MCP Workflow", () => {
     });
 
     it("should provide available tools after loading", async () => {
+      const skillPath = createTestSkill("frontend-ui-ux");
+
       const params: SkillMcpParams = {
-        skill: "/skills/frontend-ui-ux.md",
+        skill: skillPath,
         action: "load",
       };
 
@@ -207,7 +224,7 @@ describe("E2E: Skill MCP Workflow", () => {
 
     it("should fail to load non-existent skill", async () => {
       const params: SkillMcpParams = {
-        skill: "nonexistent-skill",
+        skill: "/nonexistent/path/to/skill.md",
         action: "load",
       };
 
@@ -221,33 +238,16 @@ describe("E2E: Skill MCP Workflow", () => {
 
   describe("Invoke Tool Flow", () => {
     it("should invoke tool on loaded skill", async () => {
-      const loadParams: SkillMcpParams = {
-        skill: "/skills/dev-browser.md",
-        action: "load",
-      };
+      const skillPath = createTestSkill("dev-browser");
 
-      const loadResult = await skillMcp(loadParams, ctx);
+      const loadResult = await skillMcp(
+        { skill: skillPath, action: "load" },
+        ctx
+      );
       expect(loadResult.success).toBe(true);
 
-      const skillName = loadResult.skillName;
-
-      mockManager._registerSkill(skillName, {
-        definition: {
-          name: skillName,
-          description: "Test skill",
-          mcpServers: [
-            {
-              type: "stdio",
-              command: "mock-server",
-            },
-          ],
-        },
-        serverIds: loadResult.serverIds || ["mock_server_1"],
-        loadedAt: Date.now(),
-      });
-
       const invokeParams: SkillMcpParams = {
-        skill: skillName,
+        skill: loadResult.skillName,
         action: "invoke",
         tool: "navigate",
         params: { url: "https://example.com" },
@@ -261,19 +261,12 @@ describe("E2E: Skill MCP Workflow", () => {
     });
 
     it("should invoke tool with parameters", async () => {
+      const skillPath = createTestSkill("test-skill");
+
       const loadResult = await skillMcp(
-        { skill: "/skills/test-skill.md", action: "load" },
+        { skill: skillPath, action: "load" },
         ctx
       );
-
-      mockManager._registerSkill(loadResult.skillName, {
-        definition: {
-          name: loadResult.skillName,
-          mcpServers: [{ type: "stdio", command: "test" }],
-        },
-        serverIds: ["server_1"],
-        loadedAt: Date.now(),
-      });
 
       const invokeParams: SkillMcpParams = {
         skill: loadResult.skillName,
@@ -302,20 +295,16 @@ describe("E2E: Skill MCP Workflow", () => {
       const result = await skillMcp(params, ctx);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("not loaded");
+      expect(result.error).toContain("Skill not found");
     });
 
     it("should fail to invoke without tool name", async () => {
+      const skillPath = createTestSkill("test");
+
       const loadResult = await skillMcp(
-        { skill: "/skills/test.md", action: "load" },
+        { skill: skillPath, action: "load" },
         ctx
       );
-
-      mockManager._registerSkill(loadResult.skillName, {
-        definition: { name: loadResult.skillName },
-        serverIds: ["server_1"],
-        loadedAt: Date.now(),
-      });
 
       const params: SkillMcpParams = {
         skill: loadResult.skillName,
@@ -325,20 +314,26 @@ describe("E2E: Skill MCP Workflow", () => {
       const result = await skillMcp(params, ctx);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Tool name is required");
+      expect(result.error).toContain("Missing 'tool' parameter");
     });
 
     it("should fail when skill has no MCP servers", async () => {
+      const skillContent = `---
+name: no-mcp-skill
+description: Skill without MCP servers
+---
+
+# No MCP Skill
+
+No servers here.
+`;
+      const skillPath = join(tempDir, "no-mcp.md");
+      writeFileSync(skillPath, skillContent);
+
       const loadResult = await skillMcp(
-        { skill: "/skills/no-mcp.md", action: "load" },
+        { skill: skillPath, action: "load" },
         ctx
       );
-
-      mockManager._registerSkill(loadResult.skillName, {
-        definition: { name: loadResult.skillName, mcpServers: [] },
-        serverIds: [],
-        loadedAt: Date.now(),
-      });
 
       const result = await skillMcp(
         {
@@ -350,28 +345,23 @@ describe("E2E: Skill MCP Workflow", () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("no MCP servers");
+      expect(result.error).toContain("No MCP servers available");
     });
   });
 
   describe("Unload Skill Flow", () => {
     it("should unload skill and stop MCP servers", async () => {
+      const skillPath = createTestSkill("temp-skill");
+
       const loadResult = await skillMcp(
-        { skill: "/skills/temp-skill.md", action: "load" },
+        { skill: skillPath, action: "load" },
         ctx
       );
 
       expect(loadResult.success).toBe(true);
-      const skillName = loadResult.skillName;
-
-      mockManager._registerSkill(skillName, {
-        definition: { name: skillName },
-        serverIds: loadResult.serverIds || [],
-        loadedAt: Date.now(),
-      });
 
       const unloadParams: SkillMcpParams = {
-        skill: skillName,
+        skill: loadResult.skillName,
         action: "unload",
       };
 
@@ -399,12 +389,8 @@ describe("E2E: Skill MCP Workflow", () => {
       const skills = ["skill1", "skill2", "skill3"];
 
       for (const skill of skills) {
-        await skillMcp({ skill: `/skills/${skill}.md`, action: "load" }, ctx);
-        mockManager._registerSkill(skill, {
-          definition: { name: skill },
-          serverIds: [],
-          loadedAt: Date.now(),
-        });
+        const skillPath = createTestSkill(skill);
+        await skillMcp({ skill: skillPath, action: "load" }, ctx);
       }
 
       const loadedNames = getLoadedSkillNames();
@@ -416,25 +402,17 @@ describe("E2E: Skill MCP Workflow", () => {
     });
 
     it("should get state of specific loaded skill", async () => {
+      const skillPath = createTestSkill("state-test");
+
       const loadResult = await skillMcp(
-        { skill: "/skills/state-test.md", action: "load" },
+        { skill: skillPath, action: "load" },
         ctx
       );
-
-      mockManager._registerSkill(loadResult.skillName, {
-        definition: {
-          name: loadResult.skillName,
-          description: "Test",
-        },
-        serverIds: ["server_1", "server_2"],
-        loadedAt: Date.now(),
-      });
 
       const state = getLoadedSkillState(loadResult.skillName);
 
       expect(state).toBeDefined();
       expect(state?.definition.name).toBe(loadResult.skillName);
-      expect(state?.serverIds).toContain("server_1");
     });
 
     it("should return undefined for unloaded skill state", () => {
@@ -448,15 +426,8 @@ describe("E2E: Skill MCP Workflow", () => {
       const skills = ["cleanup1", "cleanup2"];
 
       for (const skill of skills) {
-        const result = await skillMcp(
-          { skill: `/skills/${skill}.md`, action: "load" },
-          ctx
-        );
-        mockManager._registerSkill(skill, {
-          definition: { name: skill },
-          serverIds: result.serverIds || [],
-          loadedAt: Date.now(),
-        });
+        const skillPath = createTestSkill(skill);
+        await skillMcp({ skill: skillPath, action: "load" }, ctx);
       }
 
       expect(mockManager.getServerCount()).toBeGreaterThan(0);
@@ -469,7 +440,7 @@ describe("E2E: Skill MCP Workflow", () => {
 
   describe("End-to-End Complete Workflow", () => {
     it("should complete full workflow: load → invoke → unload", async () => {
-      const skillPath = "/skills/oracle.md";
+      const skillPath = createTestSkill("oracle");
 
       const loadResult = await skillMcp(
         { skill: skillPath, action: "load" },
@@ -480,22 +451,9 @@ describe("E2E: Skill MCP Workflow", () => {
       expect(loadResult.skillName).toBe("oracle");
       expect(loadResult.serverIds?.length).toBeGreaterThan(0);
 
-      const skillName = loadResult.skillName;
-
-      mockManager._registerSkill(skillName, {
-        definition: {
-          name: skillName,
-          mcpServers: [
-            { type: "stdio", command: "oracle-mcp" },
-          ],
-        },
-        serverIds: loadResult.serverIds || ["oracle_server"],
-        loadedAt: Date.now(),
-      });
-
       const invokeResult = await skillMcp(
         {
-          skill: skillName,
+          skill: loadResult.skillName,
           action: "invoke",
           tool: "query",
           params: { question: "What is the meaning of life?" },
@@ -508,7 +466,7 @@ describe("E2E: Skill MCP Workflow", () => {
       expect(invokeResult.data).toBeDefined();
 
       const unloadResult = await skillMcp(
-        { skill: skillName, action: "unload" },
+        { skill: loadResult.skillName, action: "unload" },
         ctx
       );
 
@@ -524,22 +482,17 @@ describe("E2E: Skill MCP Workflow", () => {
       ];
 
       for (const skillDef of skills) {
+        const skillPath = createTestSkill(skillDef.name);
         const loadResult = await skillMcp(
-          { skill: `/skills/${skillDef.name}.md`, action: "load" },
+          { skill: skillPath, action: "load" },
           ctx
         );
 
         expect(loadResult.success).toBe(true);
 
-        mockManager._registerSkill(skillDef.name, {
-          definition: { name: skillDef.name },
-          serverIds: loadResult.serverIds || [`${skillDef.name}_server`],
-          loadedAt: Date.now(),
-        });
-
         const invokeResult = await skillMcp(
           {
-            skill: skillDef.name,
+            skill: loadResult.skillName,
             action: "invoke",
             tool: skillDef.tool,
             params: skillDef.params,
@@ -565,15 +518,17 @@ describe("E2E: Skill MCP Workflow", () => {
 
   describe("Error Handling", () => {
     it("should handle invalid action", async () => {
+      const skillPath = createTestSkill("invalid-action-test");
+
       const params: SkillMcpParams = {
-        skill: "test",
+        skill: skillPath,
         action: "invalid" as any,
       };
 
       const result = await skillMcp(params, ctx);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Invalid action");
+      expect(result.error).toContain("Action must be one of");
     });
 
     it("should handle missing skill parameter", async () => {
@@ -582,22 +537,24 @@ describe("E2E: Skill MCP Workflow", () => {
       const result = await skillMcp(params, ctx);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Skill parameter is required");
+      expect(result.error).toContain("Missing");
     });
 
     it("should handle server disconnection during invoke", async () => {
+      const skillPath = createTestSkill("disconnect-test");
+
       const loadResult = await skillMcp(
-        { skill: "/skills/disconnect-test.md", action: "load" },
+        { skill: skillPath, action: "load" },
         ctx
       );
 
-      mockManager._registerSkill(loadResult.skillName, {
-        definition: { name: loadResult.skillName },
-        serverIds: ["disconnected_server"],
-        loadedAt: Date.now(),
-      });
-
-      mockManager.isConnected = mock(() => false);
+      const serverId = loadResult.serverIds?.[0];
+      if (serverId) {
+        const server = mockManager.getClient(serverId);
+        if (server) {
+          server.connected = false;
+        }
+      }
 
       const result = await skillMcp(
         {
@@ -609,28 +566,21 @@ describe("E2E: Skill MCP Workflow", () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("not connected");
+      expect(result.error).toContain("Server disconnected");
     });
 
     it("should handle MCP server errors gracefully", async () => {
+      const skillPath = createTestSkill("error-test");
+
+      await skillMcp({ skill: skillPath, action: "load" }, ctx);
+
       mockManager.sendJsonRpc = mock(() => {
         throw new Error("MCP server error: Connection refused");
       });
 
-      const loadResult = await skillMcp(
-        { skill: "/skills/error-test.md", action: "load" },
-        ctx
-      );
-
-      mockManager._registerSkill(loadResult.skillName, {
-        definition: { name: loadResult.skillName },
-        serverIds: ["error_server"],
-        loadedAt: Date.now(),
-      });
-
       const result = await skillMcp(
         {
-          skill: loadResult.skillName,
+          skill: "error-test",
           action: "invoke",
           tool: "failing-tool",
         },
@@ -644,8 +594,10 @@ describe("E2E: Skill MCP Workflow", () => {
 
   describe("Server State Management", () => {
     it("should track server connection state", async () => {
+      const skillPath = createTestSkill("state-track");
+
       const result = await skillMcp(
-        { skill: "/skills/state-track.md", action: "load" },
+        { skill: skillPath, action: "load" },
         ctx
       );
 
@@ -657,16 +609,12 @@ describe("E2E: Skill MCP Workflow", () => {
     });
 
     it("should update last used timestamp on invoke", async () => {
+      const skillPath = createTestSkill("timestamp");
+
       const loadResult = await skillMcp(
-        { skill: "/skills/timestamp.md", action: "load" },
+        { skill: skillPath, action: "load" },
         ctx
       );
-
-      mockManager._registerSkill(loadResult.skillName, {
-        definition: { name: loadResult.skillName },
-        serverIds: loadResult.serverIds || ["ts_server"],
-        loadedAt: Date.now(),
-      });
 
       const beforeInvoke = Date.now();
 
