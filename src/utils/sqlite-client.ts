@@ -356,7 +356,7 @@ export class SQLiteClient {
         id: row.rowid,
         content: row.content,
         metadata: row.metadata,
-        created_at: row.created_at,
+        created_at: Number(row.created_at),
         distance: row.distance,
       }));
     } finally {
@@ -384,7 +384,7 @@ export class SQLiteClient {
         id: row.rowid,
         content: row.content,
         metadata: row.metadata,
-        created_at: row.created_at,
+        created_at: Number(row.created_at),
         distance: 0,
       }));
     } finally {

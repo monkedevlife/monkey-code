@@ -166,16 +166,17 @@ describe("SQLiteClient", () => {
     });
 
     it("should return tasks filtered by status", async () => {
-      await client.storeTask({ id: "t1", status: "pending", command: "cmd1" });
-      await client.storeTask({ id: "t2", status: "pending", command: "cmd2" });
-      await client.storeTask({ id: "t3", status: "completed", command: "cmd3" });
+      await client.storeTask({ id: "t1", status: "pending", command: "cmd1", created_at: 1000 });
+      await client.storeTask({ id: "t2", status: "pending", command: "cmd2", created_at: 2000 });
+      await client.storeTask({ id: "t3", status: "completed", command: "cmd3", created_at: 3000 });
 
       const pending = await client.getTasksByStatus("pending");
       const completed = await client.getTasksByStatus("completed");
 
       expect(pending.length).toBe(2);
       expect(completed.length).toBe(1);
-       expect(pending[0].id).toBe("t1");
+      expect(pending[0].id).toBe("t2");
+      expect(pending[1].id).toBe("t1");
       expect(completed[0].id).toBe("t3");
     });
 
