@@ -3,50 +3,312 @@ import type {
   PluginContext, 
   HookHandlers, 
   ToolDefinition,
-  PluginEvent
+  PluginEvent,
+  ToolContext
 } from './types/index.js';
-import { loadConfig } from './config.js';
+import { loadConfig, getConfigPaths, type Config, type McpsConfig } from './config.js';
+import { createSQLiteClient, SQLiteClient } from './utils/sqlite-client.js';
+import { createBackgroundManager, BackgroundManager, type BackgroundManagerConfig } from './managers/BackgroundManager.js';
+import { createInteractiveManager, InteractiveManager } from './managers/InteractiveManager.js';
+import { createSkillMcpManager, SkillMcpManager, type SkillMcpManagerOptions } from './managers/SkillMcpManager.js';
+import { delegateTask, type DelegateTaskInput, type DelegateTaskOutput, delegateTaskSchema } from './tools/delegate-task.js';
+import { getBackgroundOutput, type BackgroundOutputParams, type BackgroundOutputResult } from './tools/background-output.js';
+import { createBackgroundCancelTool, type BackgroundCancelParams, type BackgroundCancelResult } from './tools/background-cancel.js';
+import { interactiveBash, type InteractiveBashInput, type InteractiveBashOutput, interactiveBashSchema, cleanupSessions } from './tools/interactive-bash.js';
+import { skillMcp, type SkillMcpParams, type SkillMcpResult, skillMcpSchema, cleanupAllSkills } from './tools/skill-mcp.js';
+
+interface PluginState {
+  config?: Config;
+  sqlite?: SQLiteClient;
+  backgroundManager?: BackgroundManager;
+  interactiveManager?: InteractiveManager;
+  skillMcpManager?: SkillMcpManager;
+  backgroundCancelTool?: Awaited<ReturnType<typeof createBackgroundCancelTool>>;
+  currentSessionId?: string;
+  isInitialized: boolean;
+}
+
+const pluginState: PluginState = {
+  isInitialized: false
+};
+
+async function initializePlugin(context: PluginContext): Promise<void> {
+  if (pluginState.isInitialized) {
+    return;
+  }
+
+  const config = await loadConfig();
+  pluginState.config = config;
+
+  const paths = getConfigPaths();
+  const sqlite = createSQLiteClient(paths.dbPath);
+  await sqlite.initialize();
+  pluginState.sqlite = sqlite;
+
+  const backgroundConfig: BackgroundManagerConfig = {
+    concurrencyLimit: config.background?.maxConcurrent ?? 5,
+    pollIntervalMs: config.background?.pollInterval ?? 5000
+  };
+  const backgroundManager = createBackgroundManager(sqlite, backgroundConfig);
+  await backgroundManager.initialize();
+  pluginState.backgroundManager = backgroundManager;
+
+  const interactiveManager = createInteractiveManager();
+  pluginState.interactiveManager = interactiveManager;
+
+  const skillMcpOptions: SkillMcpManagerOptions = {
+    builtinConfig: config.mcps as McpsConfig,
+    sessionId: context.sessionId
+  };
+  const skillMcpManager = createSkillMcpManager(skillMcpOptions);
+  try {
+    await skillMcpManager.initializeBuiltinMcps();
+  } catch (error) {
+    console.warn('[monkey-code] Failed to initialize some builtin MCPs:', error instanceof Error ? error.message : String(error));
+  }
+  pluginState.skillMcpManager = skillMcpManager;
+
+  const backgroundCancelTool = await createBackgroundCancelTool(backgroundManager, sqlite);
+  pluginState.backgroundCancelTool = backgroundCancelTool;
+
+  pluginState.currentSessionId = context.sessionId;
+  pluginState.isInitialized = true;
+}
+
+async function shutdownPlugin(): Promise<void> {
+  if (!pluginState.isInitialized) {
+    return;
+  }
+
+  if (pluginState.interactiveManager) {
+    await cleanupSessions({ manager: pluginState.interactiveManager });
+  }
+
+  if (pluginState.skillMcpManager) {
+    await cleanupAllSkills(pluginState.skillMcpManager);
+    await pluginState.skillMcpManager.cleanup();
+  }
+
+  if (pluginState.backgroundManager) {
+    await pluginState.backgroundManager.shutdown();
+  }
+
+  if (pluginState.sqlite) {
+    await pluginState.sqlite.close();
+  }
+
+  pluginState.config = undefined;
+  pluginState.sqlite = undefined;
+  pluginState.backgroundManager = undefined;
+  pluginState.interactiveManager = undefined;
+  pluginState.skillMcpManager = undefined;
+  pluginState.backgroundCancelTool = undefined;
+  pluginState.currentSessionId = undefined;
+  pluginState.isInitialized = false;
+}
+
+function createMockOpenCodeClient(): any {
+  return {
+    session: {
+      create: async () => ({ data: { id: `mock-session-${Date.now()}` } }),
+      prompt: async () => ({ data: {} })
+    }
+  };
+}
+
+async function handleDelegateTask(params: Record<string, unknown>): Promise<DelegateTaskOutput> {
+  if (!pluginState.isInitialized || !pluginState.backgroundManager) {
+    throw new Error('Plugin not initialized');
+  }
+
+  const input: DelegateTaskInput = {
+    task: params.task as string,
+    agent: params.agent as string | undefined,
+    context: params.context as string | undefined,
+    timeout: params.timeout as number | undefined
+  };
+
+  const client = createMockOpenCodeClient();
+  const ctx = {
+    backgroundManager: pluginState.backgroundManager,
+    client,
+    parentSessionId: pluginState.currentSessionId
+  };
+
+  return await delegateTask(input, ctx);
+}
+
+async function handleBackgroundOutput(params: Record<string, unknown>): Promise<BackgroundOutputResult> {
+  if (!pluginState.isInitialized || !pluginState.backgroundManager) {
+    throw new Error('Plugin not initialized');
+  }
+
+  const outputParams: BackgroundOutputParams = {
+    taskId: params.taskId as string,
+    wait: params.wait as boolean | undefined,
+    timeout: params.timeout as number | undefined
+  };
+
+  return await getBackgroundOutput(pluginState.backgroundManager, outputParams);
+}
+
+async function handleBackgroundCancel(params: Record<string, unknown>): Promise<BackgroundCancelResult> {
+  if (!pluginState.isInitialized || !pluginState.backgroundCancelTool) {
+    throw new Error('Plugin not initialized');
+  }
+
+  const cancelParams: BackgroundCancelParams = {
+    taskId: params.taskId as string,
+    all: params.all as boolean | undefined
+  };
+
+  return await pluginState.backgroundCancelTool.execute(cancelParams);
+}
+
+async function handleInteractiveBash(params: Record<string, unknown>): Promise<InteractiveBashOutput> {
+  if (!pluginState.isInitialized) {
+    throw new Error('Plugin not initialized');
+  }
+
+  const input: InteractiveBashInput = {
+    command: params.command as string,
+    action: params.action as 'start' | 'send' | 'capture' | 'close',
+    sessionId: params.sessionId as string | undefined,
+    input: params.input as string | undefined,
+    cwd: params.cwd as string | undefined,
+    lines: params.lines as number | undefined
+  };
+
+  const ctx = pluginState.interactiveManager ? { manager: pluginState.interactiveManager } : {};
+  return await interactiveBash(input, ctx);
+}
+
+async function handleSkillMcp(params: Record<string, unknown>): Promise<SkillMcpResult> {
+  if (!pluginState.isInitialized || !pluginState.skillMcpManager) {
+    throw new Error('Plugin not initialized');
+  }
+
+  const skillParams: SkillMcpParams = {
+    skill: params.skill as string,
+    action: params.action as 'load' | 'invoke' | 'unload',
+    tool: params.tool as string | undefined,
+    params: params.params as Record<string, unknown> | undefined
+  };
+
+  const ctx = {
+    manager: pluginState.skillMcpManager,
+    skillPaths: []
+  };
+
+  return await skillMcp(skillParams, ctx);
+}
+
+async function handleSessionStart(data?: Record<string, unknown>): Promise<void> {
+  if (data?.sessionId) {
+    pluginState.currentSessionId = data.sessionId as string;
+  }
+}
+
+async function handleSessionEnd(_data?: Record<string, unknown>): Promise<void> {
+  await shutdownPlugin();
+}
+
+function registerTools(_config: Config): ToolDefinition[] {
+  const tools: ToolDefinition[] = [
+    {
+      name: 'delegate-task',
+      description: 'Delegate a task to background execution using an AI agent',
+      schema: delegateTaskSchema as unknown as Record<string, unknown>,
+      handler: handleDelegateTask
+    },
+    {
+      name: 'background-output',
+      description: 'Get output from a background task, optionally waiting for completion',
+      schema: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: 'Task ID to get output for' },
+          wait: { type: 'boolean', description: 'Wait for task completion' },
+          timeout: { type: 'number', description: 'Timeout in milliseconds when waiting' }
+        },
+        required: ['taskId']
+      },
+      handler: handleBackgroundOutput
+    },
+    {
+      name: 'background-cancel',
+      description: 'Cancel a running or pending background task, or cancel all tasks',
+      schema: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: 'Task ID to cancel' },
+          all: { type: 'boolean', description: 'Cancel all cancellable tasks' }
+        }
+      },
+      handler: handleBackgroundCancel
+    },
+    {
+      name: 'interactive-bash',
+      description: 'Create and manage interactive bash sessions using tmux',
+      schema: interactiveBashSchema as unknown as Record<string, unknown>,
+      handler: handleInteractiveBash
+    },
+    {
+      name: 'skill-mcp',
+      description: 'Load, invoke, and unload skill MCP servers with embedded instructions',
+      schema: skillMcpSchema as unknown as Record<string, unknown>,
+      handler: handleSkillMcp
+    }
+  ];
+
+  return tools;
+}
 
 export function createPlugin(): MonkeyCodePlugin {
   const hooks: HookHandlers = {
-    onConfig: async (_context: PluginContext) => {
+    onConfig: async (context: PluginContext) => {
       try {
-        const config = await loadConfig();
-        registerTools(config);
+        await initializePlugin(context);
+        if (pluginState.config) {
+          registerTools(pluginState.config);
+        }
       } catch (error) {
-        void error;
+        console.error('[monkey-code] Failed to initialize plugin:', error);
+        throw error;
       }
     },
 
-    onTool: async (context) => {
+    onTool: async (context: ToolContext) => {
       const { toolName, params } = context;
       
-      if (toolName === 'delegate-task') {
-        return await handleDelegateTask(params);
+      switch (toolName) {
+        case 'delegate-task':
+          return await handleDelegateTask(params);
+        case 'background-output':
+          return await handleBackgroundOutput(params);
+        case 'background-cancel':
+          return await handleBackgroundCancel(params);
+        case 'interactive-bash':
+          return await handleInteractiveBash(params);
+        case 'skill-mcp':
+          return await handleSkillMcp(params);
+        default:
+          return undefined;
       }
-      
-      if (toolName === 'background-output') {
-        return await handleBackgroundOutput(params);
-      }
-      
-      if (toolName === 'background-cancel') {
-        return await handleBackgroundCancel(params);
-      }
-      
-      if (toolName === 'interactive-bash') {
-        return await handleInteractiveBash(params);
-      }
-      
-      if (toolName === 'skill-mcp') {
-        return await handleSkillMcp(params);
-      }
-      
-      return undefined;
     },
 
     onEvent: async (event: PluginEvent) => {
-      if (event.type === 'session:end') {
-        await handleSessionEnd(event.data);
+      switch (event.type) {
+        case 'session:start':
+          await handleSessionStart(event.data);
+          break;
+        case 'session:end':
+          await handleSessionEnd(event.data);
+          break;
+        case 'task:complete':
+          break;
+        case 'task:failed':
+          break;
       }
     }
   };
@@ -58,133 +320,19 @@ export function createPlugin(): MonkeyCodePlugin {
   };
 }
 
-function registerTools(config: any): void {
-  const tools: ToolDefinition[] = [
-    {
-      name: 'delegate-task',
-      description: 'Delegate a task to background execution',
-      schema: {
-        type: 'object',
-        properties: {
-          task: { type: 'string', description: 'Task description' },
-          agent: { type: 'string', description: 'Agent to use' },
-          context: { type: 'string', description: 'Additional context' },
-          timeout: { type: 'number', description: 'Timeout in minutes' }
-        },
-        required: ['task']
-      },
-      handler: async (params) => handleDelegateTask(params)
-    },
-    {
-      name: 'background-output',
-      description: 'Get output from background task',
-      schema: {
-        type: 'object',
-        properties: {
-          taskId: { type: 'string', description: 'Task ID' },
-          wait: { type: 'boolean', description: 'Wait for completion' }
-        },
-        required: ['taskId']
-      },
-      handler: async (params) => handleBackgroundOutput(params)
-    },
-    {
-      name: 'background-cancel',
-      description: 'Cancel a background task',
-      schema: {
-        type: 'object',
-        properties: {
-          taskId: { type: 'string', description: 'Task ID to cancel' }
-        },
-        required: ['taskId']
-      },
-      handler: async (params) => handleBackgroundCancel(params)
-    },
-    {
-      name: 'interactive-bash',
-      description: 'Create interactive bash session',
-      schema: {
-        type: 'object',
-        properties: {
-          command: { type: 'string', description: 'Command to run' },
-          action: { type: 'string', enum: ['start', 'send', 'capture', 'close'] },
-          sessionId: { type: 'string', description: 'Session ID for send/capture/close' },
-          input: { type: 'string', description: 'Input for send action' },
-          cwd: { type: 'string', description: 'Working directory' }
-        },
-        required: ['command', 'action']
-      },
-      handler: async (params) => handleInteractiveBash(params)
-    },
-    {
-      name: 'skill-mcp',
-      description: 'Load and manage skill MCP servers',
-      schema: {
-        type: 'object',
-        properties: {
-          skill: { type: 'string', description: 'Skill name or path' },
-          action: { type: 'string', enum: ['load', 'invoke', 'unload'] },
-          tool: { type: 'string', description: 'Tool name for invoke' },
-          params: { type: 'object', description: 'Parameters for invoke' }
-        },
-        required: ['skill', 'action']
-      },
-      handler: async (params) => handleSkillMcp(params)
-    }
-  ];
-  void tools;
-  void config;
+export function getPluginState(): PluginState {
+  return { ...pluginState };
 }
 
-async function handleDelegateTask(_params: Record<string, unknown>): Promise<string> {
-  const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  return taskId;
-}
-
-async function handleBackgroundOutput(params: Record<string, unknown>): Promise<unknown> {
-  const taskId = params.taskId as string;
-  return {
-    taskId,
-    status: 'pending',
-    output: null,
-    error: null,
-    startTime: new Date().toISOString()
-  };
-}
-
-async function handleBackgroundCancel(params: Record<string, unknown>): Promise<unknown> {
-  const taskId = params.taskId as string;
-  return {
-    success: true,
-    taskId,
-    message: 'Task cancelled'
-  };
-}
-
-async function handleInteractiveBash(params: Record<string, unknown>): Promise<unknown> {
-  const action = params.action as string;
-  const command = params.command as string;
-  
-  if (action === 'start') {
-    return {
-      sessionId: `session-${Date.now()}`,
-      command,
-      status: 'running'
-    };
-  }
-  
-  return { status: 'ok' };
-}
-
-async function handleSkillMcp(_params: Record<string, unknown>): Promise<unknown> {
-  return {
-    skill: 'unknown',
-    action: 'unknown',
-    status: 'ok'
-  };
-}
-
-async function handleSessionEnd(_data?: Record<string, unknown>): Promise<void> {
+export function resetPluginState(): void {
+  pluginState.config = undefined;
+  pluginState.sqlite = undefined;
+  pluginState.backgroundManager = undefined;
+  pluginState.interactiveManager = undefined;
+  pluginState.skillMcpManager = undefined;
+  pluginState.backgroundCancelTool = undefined;
+  pluginState.currentSessionId = undefined;
+  pluginState.isInitialized = false;
 }
 
 export default createPlugin;
