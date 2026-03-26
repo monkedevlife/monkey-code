@@ -1,14 +1,28 @@
-# Monkey Code
+# 🐵 Monkey Code
 
-Monkey Code is an OpenCode plugin designed to create a streamlined coding environment for AI agents. It provides a suite of tools for background task management, interactive PTY sessions via TMUX, and integration with specialized Model Context Protocol (MCP) servers.
+**A troop of specialized AI agents for OpenCode**
+
+Monkey Code brings a family of monkey-themed AI agents to your OpenCode workflow. Led by **Punch** the orchestrator, the troop handles everything from deep architectural work to quick fixes, all with their own personalities and specialties.
+
+## 🐒 Meet the Troop
+
+| Monkey | Role | Specialty |
+|--------|------|-----------|
+| 🦍 **Punch** | Orchestrator | Delegates tasks to the troop, manages workflows |
+| 🦍 **Harambe** | Deep Worker | Complex implementations, never forgets |
+| 🐵 **Caesar** | Architect | Strategic planning, system design |
+| 🦍 **Kong** | Implementer | Building features, heavy coding |
+| 🐵 **Rafiki** | Reviewer | Code review, wisdom, quality |
+| 🐒 **Abu** | Quick Specialist | Fast fixes, prototyping |
+| 🐵 **George** | Explorer | Research, codebase exploration |
 
 ## Features
 
-- **Background Tasks**: Execute long-running commands asynchronously and retrieve output later.
-- **Interactive Bash**: Real-time interaction with terminal applications (vim, htop, etc.) using TMUX.
-- **Skill-embedded MCPs**: Native support for Chrome DevTools, Context7, and Grep.app.
-- **Task Delegation**: Spawn specialized subagents (Punch, Harambe, Caesar, etc.) for specific tasks.
-- **Unified Configuration**: Flexible configuration at both user and project levels.
+- **🐵 Background Tasks**: Punch delegates to Harambe/Kong for async work
+- **🐵 Interactive Bash**: George opens PTY sessions (vim, REPLs, TUIs)
+- **🐵 Skill-Embedded MCPs**: Chrome DevTools, Context7 (Rafiki), Grep.app
+- **🐵 Vector Memory**: SQLite + sqlite-vss for agent memory
+- **🐵 Task Delegation**: Specialized monkeys for every job
 
 ## Installation
 
@@ -73,37 +87,80 @@ Monkey Code searches for configuration in two locations:
 
 ### Background Tasks
 
-Run a command in the background and check its status:
+🐵 **Ask Punch to delegate to Harambe for deep work:**
 
 ```typescript
-// Start a background task
-const { taskId } = await call_omo_agent({
-  subagent_type: 'explore',
-  prompt: 'Analyze the codebase structure',
-  run_in_background: true
+// Punch delegates a background task to Harambe
+const { taskId } = await delegateTask({
+  task: 'Analyze the codebase structure and identify patterns',
+  agent: 'harambe',  // Deep autonomous worker
+  context: 'This is a React project with TypeScript'
 });
 
-// Later, retrieve the output
-const output = await background_output({ task_id: taskId });
+// Later, check on Harambe's progress
+const status = await backgroundOutput({ taskId });
+
+// Or ask Abu for a quick status check
+const quickStatus = await backgroundOutput({ taskId, wait: false });
 ```
 
-### Interactive Bash
+### Interactive Bash (George's Terminal)
 
-Interact with TUI applications using TMUX subcommands:
+🐵 **George opens interactive sessions for exploration:**
 
 ```typescript
-// Start a new vim session
-await interactive_bash({ tmux_command: 'send-keys -t monkey-code "vim index.ts" Enter' });
+// George spawns a Python REPL
+const session = await interactiveBash({
+  action: 'start',
+  command: 'python3'
+});
+
+// Send commands to the session
+await interactiveBash({
+  action: 'send',
+  sessionId: session.sessionId,
+  input: 'print("Hello from George!")'
+});
+
+// Capture the output
+const output = await interactiveBash({
+  action: 'capture',
+  sessionId: session.sessionId
+});
+
+// Close when done
+await interactiveBash({
+  action: 'close',
+  sessionId: session.sessionId
+});
 ```
 
-### Documentation Search (Context7)
+### Documentation Search (Rafiki's Wisdom)
 
-Query library documentation directly:
+🐵 **Rafiki uses Context7 to find documentation:**
 
 ```typescript
-const docs = await context7_query_docs({
-  libraryId: '/vercel/next.js',
-  query: 'How to use Server Actions?'
+// Load the Context7 skill
+await skillMcp({
+  skill: 'context7',
+  action: 'load'
+});
+
+// Rafiki queries Next.js documentation
+const docs = await skillMcp({
+  skill: 'context7',
+  action: 'invoke',
+  tool: 'query',
+  params: {
+    libraryId: '/vercel/next.js',
+    query: 'How to use Server Actions?'
+  }
+});
+
+// Unload when done
+await skillMcp({
+  skill: 'context7',
+  action: 'unload'
 });
 ```
 
@@ -125,13 +182,27 @@ The plugin maintains local state in `~/.config/monkey-code/`:
 
 ## API Reference
 
-### Core Tools
+### 🐵 Monkey Troop Tools
 
-- `background_output(taskId: string)`: Retrieves output from a background task.
-- `background_cancel(taskId: string)`: Cancels a running background task.
-- `interactive_bash(tmuxCommand: string)`: Executes a TMUX command for interactive PTY sessions.
-- `skill_mcp(mcpName: string, ...)`: Invokes a specific MCP tool or resource.
-- `call_omo_agent(config: AgentPrompt)`: Spawns or continues a specialized subagent.
+| Tool | Description | Used By |
+|------|-------------|---------|
+| `delegateTask({ task, agent?, context?, timeout? })` | Spawns a background task assigned to a monkey agent | Punch (orchestrator) |
+| `backgroundOutput({ taskId, wait? })` | Retrieves output from Harambe's or Kong's background work | Any monkey |
+| `backgroundCancel({ taskId })` | Stops a running background task | Punch (manager) |
+| `interactiveBash({ action, command?, sessionId?, input?, cwd? })` | Manages interactive PTY sessions (REPLs, TUIs) | George (explorer) |
+| `skillMcp({ skill, action, tool?, params? })` | Loads and invokes skill-embedded MCP servers | Rafiki (wisdom), Kong (implementation) |
+
+### Agent Specialties
+
+| Monkey | Specialty | Best For |
+|--------|-----------|----------|
+| **Punch** | Orchestration | Delegating tasks, managing the troop |
+| **Harambe** | Deep Work | Complex multi-file implementations |
+| **Caesar** | Architecture | System design, planning |
+| **Kong** | Implementation | Building features, coding |
+| **Rafiki** | Review | Code review, quality assurance |
+| **Abu** | Quick Tasks | Fast fixes, prototyping |
+| **George** | Exploration | Research, codebase exploration |
 
 ## Troubleshooting
 
