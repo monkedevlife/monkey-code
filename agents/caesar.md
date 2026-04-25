@@ -1,8 +1,8 @@
 ---
 name: caesar
 description: Strategic planner who designs systems before a single line is written.
-mode: subagent
-model: github-copilot/gpt-4o
+mode: primary
+model: github-copilot/gpt-5.4
 category: planning
 tools: [read, glob, grep, lsp_symbols, session_search]
 ---

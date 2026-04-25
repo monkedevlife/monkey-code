@@ -51,18 +51,29 @@ export interface DelegateTaskContext {
   client: OpenCodeClient;
   parentSessionId?: string;
   agentConfig?: AgentConfig;
+  worktree?: string;
+  directory?: string;
 }
 
 const DEFAULT_AGENT = "punch";
 const DEFAULT_TIMEOUT_MINUTES = 30;
 
-function buildCommand(task: string, agent: string, context?: string): string {
-  const parts: string[] = [`opencode --agent ${agent}`];
-  if (context) {
-    parts.push(`--context "${context.replace(/"/g, '\\"')}"`);
-  }
-  parts.push(`--task "${task.replace(/"/g, '\\"')}"`);
-  return parts.join(" ");
+function quote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function buildCommand(task: string, agent: string, context?: string, directory?: string): string {
+  const message = context
+    ? `Task: ${task}\n\nAdditional Context:\n${context}`
+    : task;
+  return [
+    'opencode run',
+    `--agent ${quote(agent)}`,
+    directory ? `--dir ${quote(directory)}` : '',
+    quote(message),
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 export async function delegateTask(
@@ -100,7 +111,7 @@ export async function delegateTask(
     noReply: true,
   });
 
-  const command = buildCommand(input.task, agent, input.context);
+  const command = buildCommand(input.task, agent, input.context, ctx.worktree ?? ctx.directory);
   const taskId = await ctx.backgroundManager.launch({
     command,
     agentName: agent,

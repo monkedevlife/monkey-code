@@ -23,7 +23,7 @@ describe("BackgroundManager", () => {
   describe("launch", () => {
     it("should create a task with pending status", async () => {
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);
@@ -34,7 +34,7 @@ describe("BackgroundManager", () => {
       const status = await manager.getStatus(taskId);
       expect(status).not.toBeNull();
       expect(status?.status).toBeOneOf(["pending", "in_progress", "completed"]);
-      expect(status?.command).toBe("node -e console.log(1)");
+      expect(status?.command).toBe("node -e 'console.log(1)'");
     });
 
     it("should store task metadata", async () => {
@@ -54,7 +54,7 @@ describe("BackgroundManager", () => {
 
     it("should start tasks immediately when under concurrency limit", async () => {
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);
@@ -94,7 +94,7 @@ describe("BackgroundManager", () => {
 
     it("should throw error for already completed task", async () => {
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);
@@ -122,7 +122,7 @@ describe("BackgroundManager", () => {
 
     it("should return task status for existing task", async () => {
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);
@@ -130,7 +130,7 @@ describe("BackgroundManager", () => {
 
       expect(status).not.toBeNull();
       expect(status?.id).toBe(taskId);
-      expect(status?.command).toBe("node -e console.log(1)");
+      expect(status?.command).toBe("node -e 'console.log(1)'");
     });
   });
 
@@ -142,7 +142,7 @@ describe("BackgroundManager", () => {
 
     it("should return task output after completion", async () => {
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);
@@ -162,16 +162,16 @@ describe("BackgroundManager", () => {
     });
 
     it("should return all tasks", async () => {
-      await manager.launch({ command: "node -e console.log(1)" });
-      await manager.launch({ command: "node -e console.log(1)" });
-      await manager.launch({ command: "node -e console.log(1)" });
+      await manager.launch({ command: "node -e 'console.log(1)'" });
+      await manager.launch({ command: "node -e 'console.log(1)'" });
+      await manager.launch({ command: "node -e 'console.log(1)'" });
 
       const tasks = await manager.listTasks();
       expect(tasks.length).toBe(3);
     });
 
     it("should filter by status", async () => {
-      const taskId = await manager.launch({ command: "node -e console.log(1)" });
+      const taskId = await manager.launch({ command: "node -e 'console.log(1)'" });
       
       await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -217,7 +217,7 @@ describe("BackgroundManager", () => {
   describe("task lifecycle", () => {
     it("should transition pending → running → completed", async () => {
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);
@@ -246,7 +246,7 @@ describe("BackgroundManager", () => {
 
     it("should capture stdout output", async () => {
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);
@@ -277,7 +277,7 @@ describe("BackgroundManager", () => {
       let completedTaskId = "";
 
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);
@@ -298,7 +298,7 @@ describe("BackgroundManager", () => {
       let receivedOutput = "";
 
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await manager.launch(input);

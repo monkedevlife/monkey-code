@@ -106,7 +106,8 @@ export class BackgroundManager implements IBackgroundManager {
       if (signal.aborted) {
         throw new Error("Task was cancelled");
       }
-      const proc = Bun.spawn(command.split(" "), { stdout: "pipe", stderr: "pipe", signal });
+      const shell = process.env.SHELL || "/bin/sh";
+      const proc = Bun.spawn([shell, "-lc", command], { stdout: "pipe", stderr: "pipe", signal });
       await proc.exited;
       const stdout = await new Response(proc.stdout).text();
       const stderr = await new Response(proc.stderr).text();

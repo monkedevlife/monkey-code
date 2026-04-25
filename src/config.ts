@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const ThinkingConfigSchema = z.object({
@@ -125,13 +125,15 @@ const DEFAULT_CONFIG: Config = {
   },
 };
 
-function getConfigDirs() {
+function getConfigDirs(projectRoot = process.cwd()) {
   const home = process.env.HOME || process.env.USERPROFILE || '';
   if (!home) {
     throw new Error('Could not determine home directory');
   }
   return {
-    projectConfig: '.opencode/monkey-code.json',
+    projectConfig: join(projectRoot, '.opencode', 'monkey-code.json'),
+    userOpencodeConfigDir: join(home, '.config', 'opencode'),
+    userOpencodeConfig: join(home, '.config', 'opencode', 'monkey-code.json'),
     userConfigDir: join(home, '.config', 'monkey-code'),
     dbPath: join(home, '.config', 'monkey-code', 'monkey.db'),
     tasksDir: join(home, '.config', 'monkey-code', 'tasks'),
@@ -141,8 +143,8 @@ function getConfigDirs() {
   };
 }
 
-function ensureConfigDir() {
-  const { userConfigDir, tasksDir, logsDir, presetsDir } = getConfigDirs();
+function ensureConfigDir(projectRoot = process.cwd()) {
+  const { userConfigDir, tasksDir, logsDir, presetsDir } = getConfigDirs(projectRoot);
   
   if (!existsSync(userConfigDir)) {
     mkdirSync(userConfigDir, { recursive: true });
@@ -158,26 +160,75 @@ function ensureConfigDir() {
   }
 }
 
-function loadProjectConfig(): Partial<Config> {
-  const { projectConfig } = getConfigDirs();
-  
-  if (!existsSync(projectConfig)) {
+function loadConfigFile(filePath: string): Partial<Config> {
+  if (!existsSync(filePath)) {
     return {};
   }
-  
+
   try {
-    const content = readFileSync(projectConfig, 'utf-8');
+    const content = readFileSync(filePath, 'utf-8');
     return JSON.parse(content);
   } catch (error) {
-    throw new Error(`Failed to load project config from ${projectConfig}: ${error}`);
+    throw new Error(`Failed to load config from ${filePath}: ${error}`);
   }
 }
 
-export function loadConfig(): Config {
-  ensureConfigDir();
-  const projectConfig = loadProjectConfig();
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
-  const finalMerged = { ...DEFAULT_CONFIG, ...projectConfig };
+function mergeConfigLayers<T extends Record<string, unknown>>(...layers: T[]): T {
+  return layers.reduce<T>((acc, layer) => {
+    const next = { ...acc } as Record<string, unknown>;
+
+    for (const [key, value] of Object.entries(layer)) {
+      const existing = next[key];
+      next[key] = isObject(existing) && isObject(value)
+        ? mergeConfigLayers(existing, value)
+        : value;
+    }
+
+    return next as T;
+  }, {} as T);
+}
+
+export function createUserOpencodeConfigTemplate(): Partial<Config> {
+  return {
+    agents: {},
+    background: {},
+    mcps: {},
+    sqlite: {},
+    tmux: {},
+  };
+}
+
+export function writeUserOpencodeConfig(projectRoot = process.cwd()) {
+  const { userOpencodeConfigDir, userOpencodeConfig } = getConfigDirs(projectRoot);
+
+  if (!existsSync(userOpencodeConfigDir)) {
+    mkdirSync(userOpencodeConfigDir, { recursive: true });
+  }
+
+  if (existsSync(userOpencodeConfig)) {
+    return { path: userOpencodeConfig, written: false };
+  }
+
+  writeFileSync(
+    userOpencodeConfig,
+    `${JSON.stringify(createUserOpencodeConfigTemplate(), null, 2)}\n`,
+    'utf-8',
+  );
+
+  return { path: userOpencodeConfig, written: true };
+}
+
+export function loadConfig(projectRoot = process.cwd()): Config {
+  ensureConfigDir(projectRoot);
+  const { projectConfig, userOpencodeConfig } = getConfigDirs(projectRoot);
+  const userConfig = loadConfigFile(userOpencodeConfig);
+  const localConfig = loadConfigFile(projectConfig);
+
+  const finalMerged = mergeConfigLayers(DEFAULT_CONFIG, userConfig, localConfig);
   
   try {
     return ConfigSchema.parse(finalMerged);
@@ -190,8 +241,8 @@ export function loadConfig(): Config {
   }
 }
 
-export function getConfigPaths() {
-  return getConfigDirs();
+export function getConfigPaths(projectRoot = process.cwd()) {
+  return getConfigDirs(projectRoot);
 }
 
 export { ConfigSchema };

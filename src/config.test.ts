@@ -6,7 +6,9 @@ import { join } from 'path';
 describe('Config System', () => {
   const originalCwd = process.cwd();
   const testDir = '/tmp/monkey-code-config-test';
-  const home = process.env.HOME || '';
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const testHome = join(testDir, 'home');
 
   beforeEach(() => {
     // Create test directory
@@ -14,11 +16,16 @@ describe('Config System', () => {
       rmSync(testDir, { recursive: true });
     }
     mkdirSync(testDir, { recursive: true });
+    mkdirSync(testHome, { recursive: true });
+    process.env.HOME = testHome;
+    process.env.USERPROFILE = testHome;
     process.chdir(testDir);
   });
 
   afterEach(() => {
     process.chdir(originalCwd);
+    process.env.HOME = originalHome;
+    process.env.USERPROFILE = originalUserProfile;
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true });
     }
@@ -58,6 +65,37 @@ describe('Config System', () => {
       const config = loadConfig();
 
       expect(config.background?.maxConcurrent).toBe(3);
+    });
+
+    it('should load user config from ~/.config/opencode/monkey-code.json', () => {
+      const { userOpencodeConfigDir, userOpencodeConfig } = getConfigPaths();
+      mkdirSync(userOpencodeConfigDir, { recursive: true });
+      writeFileSync(userOpencodeConfig, JSON.stringify({ background: { maxConcurrent: 4 } }));
+
+      const config = loadConfig();
+
+      expect(config.background?.maxConcurrent).toBe(4);
+    });
+
+    it('should let project config override user config', () => {
+      const { userOpencodeConfigDir, userOpencodeConfig } = getConfigPaths();
+      mkdirSync(userOpencodeConfigDir, { recursive: true });
+      writeFileSync(userOpencodeConfig, JSON.stringify({ background: { maxConcurrent: 4, pollInterval: 2000 } }));
+
+      mkdirSync('.opencode', { recursive: true });
+      writeFileSync('.opencode/monkey-code.json', JSON.stringify({ background: { maxConcurrent: 9 } }));
+
+      const config = loadConfig();
+
+      expect(config.background?.maxConcurrent).toBe(9);
+      expect(config.background?.pollInterval).toBe(2000);
+    });
+
+    it('should provide user opencode config paths', () => {
+      const paths = getConfigPaths();
+
+      expect(paths.userOpencodeConfigDir).toContain('.config/opencode');
+      expect(paths.userOpencodeConfig).toContain('.config/opencode/monkey-code.json');
     });
 
     it('should merge project config with defaults', () => {
@@ -198,7 +236,7 @@ describe('Config System', () => {
     it('should provide storage paths', () => {
       const paths = getConfigPaths();
 
-      expect(paths.projectConfig).toBe('.opencode/monkey-code.json');
+      expect(paths.projectConfig).toEndWith('/.opencode/monkey-code.json');
       expect(paths.userConfigDir).toContain('.config/monkey-code');
       expect(paths.dbPath).toContain('.config/monkey-code/monkey.db');
       expect(paths.tasksDir).toContain('.config/monkey-code/tasks');

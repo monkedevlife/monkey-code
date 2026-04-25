@@ -1,8 +1,8 @@
 ---
 name: punch
 description: All-in-one feature completer who drives tasks from start to finish.
-mode: subagent
-model: github-copilot/gpt-4o
+mode: primary
+model: github-copilot/gpt-5.4
 category: quick
 tools: [call_omo_agent, background_output, background_cancel, session_list, session_read, session_search, session_info]
 ---

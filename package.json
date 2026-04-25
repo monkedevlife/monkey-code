@@ -4,6 +4,9 @@
   "description": "OpenCode plugin for agent orchestration with background tasks, interactive PTY sessions, and skill-embedded MCP support",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "bun build --target=bun --outdir=dist src/index.ts",
@@ -13,6 +16,7 @@
     "postinstall": "bun run scripts/postinstall.ts"
   },
   "dependencies": {
+    "@opencode-ai/plugin": "^1.14.24",
     "js-yaml": "^4.1.0",
     "sqlite-vss": "^0.1.2",
     "zod": "^3.22.0"
@@ -22,7 +26,8 @@
     "@types/js-yaml": "^4.0.5",
     "typescript": "^5.3.0"
   },
-  "engine": {
-    "bun": ">=1.0.0"
+  "engines": {
+    "bun": ">=1.0.0",
+    "opencode": ">=1.14.24"
   }
 }

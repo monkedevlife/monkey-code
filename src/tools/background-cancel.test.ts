@@ -62,7 +62,7 @@ describe("BackgroundCancelTool", () => {
 
     it("should prevent cancelling already completed task", async () => {
       const input: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId = await backgroundManager.launch(input);
@@ -146,7 +146,7 @@ describe("BackgroundCancelTool", () => {
 
     it("should skip already completed/failed tasks when cancelling all", async () => {
       const input1: LaunchTaskInput = {
-        command: "node -e console.log(1)",
+        command: "node -e 'console.log(1)'",
       };
 
       const taskId1 = await backgroundManager.launch(input1);

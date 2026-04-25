@@ -59,7 +59,7 @@ Create `.opencode/monkey-code.json` in your project root:
 {
   "agents": {
     "punch": {
-      "model": "github-copilot/gpt-4o",
+      "model": "github-copilot/gpt-5.4",
       "temperature": 0.7
     }
   }
@@ -136,7 +136,7 @@ Configure individual monkeys with model and temperature settings:
       "temperature": 0.6
     },
     "scout": {
-      "model": "github-copilot/gpt-4o",
+      "model": "github-copilot/gpt-5.4",
       "temperature": 0.4
     },
     "builder": {
@@ -301,7 +301,7 @@ On `bun install`, Monkey Code generates starter preset files in `~/.config/monke
 
 | Provider | Default Model | Required Setup |
 |----------|---------------|----------------|
-| **GitHub Copilot** | `github-copilot/gpt-4o` | GitHub Copilot auth in OpenCode |
+| **GitHub Copilot** | `github-copilot/gpt-5.4` | GitHub Copilot auth in OpenCode |
 | **OpenCode Zen** | `opencode-zen/gpt-5-nano` | OpenCode provider setup |
 | **OpenRouter** | `openrouter/openai/gpt-4o` | `OPENROUTER_API_KEY` env var |
 | **Z.AI** | `z-ai/glm-4.5` | `ZAI_API_KEY` env var |

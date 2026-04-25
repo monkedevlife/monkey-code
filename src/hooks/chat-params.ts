@@ -7,7 +7,7 @@ export interface ChatParamsInput {
   sessionID: string;
   agent: { name?: string };
   model: { providerID: string; modelID: string };
-  provider: { id: string };
+  provider: { id?: string };
   message: { variant?: string };
 }
 
@@ -16,6 +16,7 @@ export interface ChatParamsOutput {
   topP?: number;
   topK?: number;
   maxTokens?: number;
+  maxOutputTokens?: number;
   presencePenalty?: number;
   frequencyPenalty?: number;
   reasoningEffort?:
@@ -65,17 +66,21 @@ function buildChatParamsInput(raw: unknown): ChatParamsInput | null {
       : typeof model.id === "string"
         ? model.id
       : undefined;
-  const providerId = provider.id;
-
   if (typeof providerID !== "string") return null;
   if (typeof modelID !== "string") return null;
-  if (typeof providerId !== "string") return null;
 
   return {
     sessionID,
     agent: { name: agentName },
     model: { providerID, modelID },
-    provider: { id: providerId },
+    provider: {
+      id:
+        typeof provider.id === 'string'
+          ? provider.id
+          : isRecord(provider.info) && typeof provider.info.id === 'string'
+            ? provider.info.id
+            : providerID,
+    },
     message,
   };
 }
@@ -95,6 +100,7 @@ function applyParamsToOutput(
   }
   if (params.maxTokens !== undefined) {
     output.maxTokens = params.maxTokens;
+    output.maxOutputTokens = params.maxTokens;
   }
   if (params.presencePenalty !== undefined) {
     output.presencePenalty = params.presencePenalty;
@@ -134,7 +140,13 @@ export async function handleChatParams(
     temperature: typeof outputRecord.temperature === 'number' ? outputRecord.temperature : undefined,
     topP: typeof outputRecord.topP === 'number' ? outputRecord.topP : undefined,
     topK: typeof outputRecord.topK === 'number' ? outputRecord.topK : undefined,
-    maxTokens: typeof outputRecord.maxTokens === 'number' ? outputRecord.maxTokens : undefined,
+    maxTokens:
+      typeof outputRecord.maxTokens === 'number'
+        ? outputRecord.maxTokens
+        : typeof outputRecord.maxOutputTokens === 'number'
+          ? outputRecord.maxOutputTokens
+          : undefined,
+    maxOutputTokens: typeof outputRecord.maxOutputTokens === 'number' ? outputRecord.maxOutputTokens : undefined,
     presencePenalty: typeof outputRecord.presencePenalty === 'number' ? outputRecord.presencePenalty : undefined,
     frequencyPenalty: typeof outputRecord.frequencyPenalty === 'number' ? outputRecord.frequencyPenalty : undefined,
     reasoningEffort: typeof outputRecord.reasoningEffort === 'string' ? outputRecord.reasoningEffort as ChatParamsOutput['reasoningEffort'] : undefined,
@@ -150,7 +162,10 @@ export async function handleChatParams(
   if (chatOutput.temperature !== undefined) outputRecord.temperature = chatOutput.temperature;
   if (chatOutput.topP !== undefined) outputRecord.topP = chatOutput.topP;
   if (chatOutput.topK !== undefined) outputRecord.topK = chatOutput.topK;
-  if (chatOutput.maxTokens !== undefined) outputRecord.maxTokens = chatOutput.maxTokens;
+  if (chatOutput.maxTokens !== undefined) {
+    outputRecord.maxTokens = chatOutput.maxTokens;
+    outputRecord.maxOutputTokens = chatOutput.maxTokens;
+  }
   if (chatOutput.presencePenalty !== undefined) outputRecord.presencePenalty = chatOutput.presencePenalty;
   if (chatOutput.frequencyPenalty !== undefined) outputRecord.frequencyPenalty = chatOutput.frequencyPenalty;
   if (chatOutput.reasoningEffort !== undefined) outputRecord.reasoningEffort = chatOutput.reasoningEffort;
