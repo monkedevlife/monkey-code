@@ -1,4 +1,9 @@
 import type { BackgroundManager } from "../managers/BackgroundManager.js";
+import type { AgentConfig } from "../config.js";
+import {
+  setSessionPromptParams,
+  agentConfigToPromptParams,
+} from "../utils/session-prompt-params.js";
 
 export interface DelegateTaskInput {
   task: string;
@@ -11,7 +16,16 @@ export interface DelegateTaskOutput {
   taskId: string;
   sessionId: string;
   status: "pending" | "in_progress" | "completed" | "failed" | "cancelled";
-  message: string;
+  agent: string;
+  timeout: number;
+  createdAt: string;
+  summary: string;
+  nextActions: Array<{
+    action: string;
+    description: string;
+    tool: string;
+    params: Record<string, string>;
+  }>;
 }
 
 export interface OpenCodeClient {
@@ -36,9 +50,10 @@ export interface DelegateTaskContext {
   backgroundManager: BackgroundManager;
   client: OpenCodeClient;
   parentSessionId?: string;
+  agentConfig?: AgentConfig;
 }
 
-const DEFAULT_AGENT = "kong";
+const DEFAULT_AGENT = "punch";
 const DEFAULT_TIMEOUT_MINUTES = 30;
 
 function buildCommand(task: string, agent: string, context?: string): string {
@@ -68,6 +83,11 @@ export async function delegateTask(
 
   const sessionId = createRes.data.id;
 
+  if (ctx.agentConfig) {
+    const promptParams = agentConfigToPromptParams(ctx.agentConfig);
+    setSessionPromptParams(sessionId, promptParams);
+  }
+
   const systemPrompt = input.context
     ? `You are delegated to work on the following task.\n\nTask: ${input.task}\n\nAdditional Context:\n${input.context}`
     : `You are delegated to work on the following task.\n\nTask: ${input.task}`;
@@ -93,7 +113,24 @@ export async function delegateTask(
     taskId,
     sessionId,
     status: "pending",
-    message: `Task delegated to agent '${agent}' with session ${sessionId}. Task ID: ${taskId}`,
+    agent,
+    timeout,
+    createdAt: new Date().toISOString(),
+    summary: `Task delegated to agent '${agent}'`,
+    nextActions: [
+      {
+        action: "check-status",
+        description: "Check task progress and output",
+        tool: "background-output",
+        params: { taskId }
+      },
+      {
+        action: "cancel",
+        description: "Cancel the task if no longer needed",
+        tool: "background-cancel",
+        params: { taskId }
+      }
+    ]
   };
 }
 
@@ -103,8 +140,8 @@ export const delegateTaskSchema = {
     task: { type: "string", description: "Task description" },
     agent: {
       type: "string",
-      description: "Agent to use (default: kong)",
-      enum: ["punch", "harambe", "caesar", "kong", "rafiki", "abu", "george"],
+      description: "Agent to use (default: punch). Main agents: punch (feature completer), caesar (planning), harambe (critic/analysis), george (creative). Generic sub-agents: tasker (atomic tasks), scout (skill/mcp exploration), builder (code components)",
+      enum: ["punch", "harambe", "caesar", "george", "tasker", "scout", "builder"],
     },
     context: { type: "string", description: "Additional context" },
     timeout: {

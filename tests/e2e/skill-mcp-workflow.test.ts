@@ -189,7 +189,7 @@ This is a test skill for ${name}.
       expect(result.success).toBe(true);
       expect(result.skillName).toBe("playwright");
       expect(result.action).toBe("load");
-      expect(result.message).toContain("loaded successfully");
+      expect(result.summary).toContain("loaded");
     });
 
     it("should load skill and start MCP servers", async () => {
@@ -232,7 +232,7 @@ This is a test skill for ${name}.
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
-      expect(result.message).toContain("not found");
+      expect(result.summary).toContain("not found");
     });
   });
 
@@ -257,7 +257,7 @@ This is a test skill for ${name}.
 
       expect(invokeResult.success).toBe(true);
       expect(invokeResult.action).toBe("invoke");
-      expect(invokeResult.message).toContain("invoked successfully");
+      expect(invokeResult.summary).toContain("invoked");
     });
 
     it("should invoke tool with parameters", async () => {
@@ -368,7 +368,7 @@ No servers here.
       const unloadResult = await skillMcp(unloadParams, ctx);
 
       expect(unloadResult.success).toBe(true);
-      expect(unloadResult.message).toContain("unloaded successfully");
+      expect(unloadResult.summary).toContain("unloaded");
     });
 
     it("should fail to unload non-loaded skill", async () => {
@@ -380,7 +380,7 @@ No servers here.
       const result = await skillMcp(params, ctx);
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("not loaded");
+      expect(result.summary).toContain("not loaded");
     });
   });
 
@@ -471,7 +471,7 @@ No servers here.
       );
 
       expect(unloadResult.success).toBe(true);
-      expect(unloadResult.message).toContain("unloaded");
+      expect(unloadResult.summary).toContain("unloaded");
     });
 
     it("should handle multiple skill operations", async () => {

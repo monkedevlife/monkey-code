@@ -181,7 +181,7 @@ describe("E2E: Background Task Workflow", () => {
     it("should delegate task and return taskId immediately", async () => {
       const input: DelegateTaskInput = {
         task: "Refactor authentication module",
-        agent: "kong",
+        agent: "tasker",
       };
 
       const result = await delegateTask(input, {
@@ -193,7 +193,7 @@ describe("E2E: Background Task Workflow", () => {
       expect(result.taskId).toMatch(/^mock_task_/);
       expect(result.status).toBe("pending");
       expect(result.sessionId).toMatch(/^mock_session_/);
-      expect(result.message).toContain("Task delegated");
+      expect(result.summary).toContain("Task delegated");
     });
 
     it("should create child session with parent reference", async () => {
@@ -262,7 +262,7 @@ describe("E2E: Background Task Workflow", () => {
     it("should return current status without waiting when wait=false", async () => {
       const input: DelegateTaskInput = {
         task: "Build project",
-        agent: "kong",
+        agent: "tasker",
       };
 
       const delegateResult = await delegateTask(input, {
@@ -282,7 +282,7 @@ describe("E2E: Background Task Workflow", () => {
 
     it("should handle multiple task delegations and poll each", async () => {
       const tasks = [
-        { task: "Task 1", agent: "kong" },
+        { task: "Task 1", agent: "tasker" },
         { task: "Task 2", agent: "punch" },
         { task: "Task 3", agent: "harambe" },
       ];
@@ -327,7 +327,7 @@ describe("E2E: Background Task Workflow", () => {
 
       const input: DelegateTaskInput = {
         task: "Deploy application",
-        agent: "rafiki",
+        agent: "scout",
       };
 
       const result = await delegateTask(input, {
@@ -355,7 +355,7 @@ describe("E2E: Background Task Workflow", () => {
 
       const input: DelegateTaskInput = {
         task: "Run failing tests",
-        agent: "abu",
+        agent: "builder",
       };
 
       const result = await delegateTask(input, {
@@ -409,7 +409,7 @@ describe("E2E: Background Task Workflow", () => {
 
       const input: DelegateTaskInput = {
         task: "Should fail",
-        agent: "kong",
+        agent: "tasker",
       };
 
       expect(
@@ -425,7 +425,7 @@ describe("E2E: Background Task Workflow", () => {
     it("should complete full workflow: delegate → poll → get output → verify", async () => {
       const workflowInput: DelegateTaskInput = {
         task: "Run full integration test suite",
-        agent: "kong",
+        agent: "tasker",
         context: "Use test environment configuration",
         timeout: 60,
       };

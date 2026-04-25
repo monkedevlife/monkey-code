@@ -401,7 +401,7 @@ This is the ${name} agent skill.
       expect(result.taskId).toMatch(/^punch_task_/);
       expect(result.status).toBe("pending");
       expect(result.sessionId).toMatch(/^punch_session_/);
-      expect(result.message).toContain("agent 'punch'");
+      expect(result.agent).toBe("punch");
     });
 
     it("should create child session for Punch delegation", async () => {
@@ -459,7 +459,7 @@ This is the ${name} agent skill.
       expect(results).toHaveLength(3);
       results.forEach((r) => {
         expect(r.taskId).toMatch(/^punch_task_/);
-        expect(r.message).toContain("agent 'punch'");
+        expect(r.agent).toBe("punch");
       });
     });
   });
@@ -671,7 +671,7 @@ This is the ${name} agent skill.
 
   describe("Troop Delegation (Multiple Agents)", () => {
     it("should delegate to multiple agents including Punch", async () => {
-      const agents = ["punch", "kong", "harambe"];
+      const agents = ["punch", "tasker", "harambe"];
       const results = await Promise.all(
         agents.map((agent) =>
           delegateTask(
@@ -692,19 +692,17 @@ This is the ${name} agent skill.
 
       results.forEach((r, i) => {
         expect(r.taskId).toBeDefined();
-        expect(r.message).toContain(`agent '${agents[i]}'`);
+        expect(r.agent).toBe(agents[i]);
       });
 
-      const punchResult = results.find((r) =>
-        r.message.includes("agent 'punch'")
-      );
+      const punchResult = results.find((r) => r.agent === "punch");
       expect(punchResult).toBeDefined();
     });
 
     it("should get results from all troop members", async () => {
       const tasks = [
         { task: "Security scan", agent: "punch" },
-        { task: "Code review", agent: "kong" },
+        { task: "Code review", agent: "tasker" },
         { task: "Testing", agent: "harambe" },
       ];
 

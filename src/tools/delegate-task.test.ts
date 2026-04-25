@@ -48,7 +48,7 @@ describe("delegate-task", () => {
   });
 
   describe("delegateTask", () => {
-    it("should create child session and return taskId immediately", async () => {
+    it("should create child session and return structured output", async () => {
       const input: DelegateTaskInput = {
         task: "Refactor the authentication module",
       };
@@ -58,7 +58,14 @@ describe("delegate-task", () => {
       expect(result.taskId).toMatch(/^task_/);
       expect(result.sessionId).toMatch(/^session_/);
       expect(result.status).toBe("pending");
-      expect(result.message).toContain("Task delegated to agent 'kong'");
+      expect(result.agent).toBe("punch");
+      expect(result.timeout).toBe(DEFAULT_TIMEOUT_MINUTES);
+      expect(result.createdAt).toBeString();
+      expect(result.summary).toContain("Task delegated");
+      expect(result.nextActions).toBeArray();
+      expect(result.nextActions.length).toBeGreaterThan(0);
+      expect(result.nextActions[0].tool).toBe("background-output");
+      expect(result.nextActions[0].params.taskId).toBe(result.taskId);
     });
 
     it("should use specified agent instead of default", async () => {
@@ -69,7 +76,7 @@ describe("delegate-task", () => {
 
       const result = await delegateTask(input, ctx);
 
-      expect(result.message).toContain("agent 'punch'");
+      expect(result.agent).toBe("punch");
       expect(ctx.client.session.prompt).toHaveBeenCalled();
     });
 
@@ -80,7 +87,7 @@ describe("delegate-task", () => {
 
       await delegateTask(input, ctx);
 
-      expect(DEFAULT_AGENT).toBe("kong");
+      expect(DEFAULT_AGENT).toBe("punch");
     });
 
     it("should include context in system prompt when provided", async () => {
@@ -132,7 +139,7 @@ describe("delegate-task", () => {
     });
 
     it("should support all valid agents", async () => {
-      const agents = ["punch", "harambe", "caesar", "kong", "rafiki", "abu", "george"];
+      const agents = ["punch", "harambe", "caesar", "george", "tasker", "scout", "builder"];
 
       for (const agent of agents) {
         const input: DelegateTaskInput = {
@@ -141,7 +148,7 @@ describe("delegate-task", () => {
         };
 
         const result = await delegateTask(input, ctx);
-        expect(result.message).toContain(`agent '${agent}'`);
+        expect(result.agent).toBe(agent);
       }
     });
 
@@ -158,7 +165,7 @@ describe("delegate-task", () => {
     it("should not wait for task completion", async () => {
       let launchResolved = false;
       ctx.backgroundManager.launch = mock(() =>
-        new Promise((resolve) => {
+        new Promise<string>((resolve) => {
           setTimeout(() => {
             launchResolved = true;
             resolve("task_delayed");
@@ -208,7 +215,7 @@ describe("delegate-task", () => {
 
       expect(delegateTaskSchema.type).toBe("object");
       expect(delegateTaskSchema.properties.task.type).toBe("string");
-      expect(delegateTaskSchema.properties.agent.enum).toContain("kong");
+      expect(delegateTaskSchema.properties.agent.enum).toContain("tasker");
       expect(delegateTaskSchema.properties.agent.enum).toContain("punch");
       expect(delegateTaskSchema.properties.timeout.minimum).toBe(1);
       expect(delegateTaskSchema.properties.timeout.maximum).toBe(240);

@@ -140,7 +140,7 @@ describe("E2E: Interactive Bash Workflow", () => {
 
       expect(result.success).toBe(true);
       expect(result.sessionId).toMatch(/^mock_session_/);
-      expect(result.message).toContain("Session started");
+      expect(result.summary).toContain("Session started");
     });
 
     it("should start session with specific command", async () => {
@@ -153,7 +153,7 @@ describe("E2E: Interactive Bash Workflow", () => {
 
       expect(result.success).toBe(true);
       expect(result.sessionId).toBeDefined();
-      expect(result.message).toContain("node");
+      expect(result.command).toContain("node");
     });
 
     it("should start session with working directory", async () => {
@@ -206,7 +206,7 @@ describe("E2E: Interactive Bash Workflow", () => {
 
       expect(sendResult.success).toBe(true);
       expect(sendResult.sessionId).toBe(sessionId);
-      expect(sendResult.message).toContain("Keys sent");
+      expect(sendResult.summary).toContain("Sent");
     });
 
     it("should send multiple commands to session", async () => {
@@ -313,7 +313,7 @@ describe("E2E: Interactive Bash Workflow", () => {
       expect(captureResult.success).toBe(true);
       expect(captureResult.sessionId).toBe(sessionId);
       expect(captureResult.output).toBeDefined();
-      expect(captureResult.message).toContain("Captured");
+      expect(captureResult.summary).toContain("Captured");
     });
 
     it("should capture specified number of lines", async () => {
@@ -391,7 +391,7 @@ describe("E2E: Interactive Bash Workflow", () => {
 
       expect(closeResult.success).toBe(true);
       expect(closeResult.sessionId).toBe(sessionId);
-      expect(closeResult.message).toContain("closed");
+      expect(closeResult.summary).toContain("closed");
     });
 
     it("should fail to close without sessionId", async () => {
