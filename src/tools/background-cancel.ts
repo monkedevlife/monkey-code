@@ -9,9 +9,38 @@ export interface BackgroundCancelParams {
 export interface BackgroundCancelResult {
   success: boolean;
   taskId?: string;
-  cancelledCount?: number;
-  message: string;
+  cancelledCount: number;
+  summary: string;
+  cancelledTasks: string[];
+  notFoundTasks: string[];
+  alreadyCompletedTasks: string[];
   error?: string;
+  nextActions: Array<{
+    action: string;
+    description: string;
+    tool: string;
+    params: Record<string, string>;
+  }>;
+}
+
+function makeNextActions(taskId?: string): BackgroundCancelResult['nextActions'] {
+  const actions: BackgroundCancelResult['nextActions'] = [
+    {
+      action: 'list-tasks',
+      description: 'List all background tasks',
+      tool: 'background-output',
+      params: {}
+    }
+  ];
+  if (taskId) {
+    actions.push({
+      action: 'check-status',
+      description: 'Check task status',
+      tool: 'background-output',
+      params: { taskId }
+    });
+  }
+  return actions;
 }
 
 export class BackgroundCancelTool {
@@ -32,8 +61,13 @@ export class BackgroundCancelTool {
       if (!params.taskId) {
         return {
           success: false,
-          message: 'Either taskId or all parameter is required',
-          error: 'Missing required parameter'
+          cancelledCount: 0,
+          summary: 'Either taskId or all parameter is required',
+          cancelledTasks: [],
+          notFoundTasks: [],
+          alreadyCompletedTasks: [],
+          error: 'Missing required parameter',
+          nextActions: makeNextActions()
         };
       }
 
@@ -43,8 +77,13 @@ export class BackgroundCancelTool {
       return {
         success: false,
         taskId: params.taskId,
-        message: 'Failed to cancel task',
-        error: errorMessage
+        cancelledCount: 0,
+        summary: 'Failed to cancel task',
+        cancelledTasks: [],
+        notFoundTasks: params.taskId ? [params.taskId] : [],
+        alreadyCompletedTasks: [],
+        error: errorMessage,
+        nextActions: makeNextActions(params.taskId)
       };
     }
   }
@@ -56,8 +95,13 @@ export class BackgroundCancelTool {
       return {
         success: false,
         taskId,
-        message: `Task not found: ${taskId}`,
-        error: 'Task not found'
+        cancelledCount: 0,
+        summary: `Task not found: ${taskId}`,
+        cancelledTasks: [],
+        notFoundTasks: [taskId],
+        alreadyCompletedTasks: [],
+        error: 'Task not found',
+        nextActions: makeNextActions(taskId)
       };
     }
 
@@ -65,8 +109,13 @@ export class BackgroundCancelTool {
       return {
         success: false,
         taskId,
-        message: `Cannot cancel task in ${task.status} state`,
-        error: `Task is already ${task.status}`
+        cancelledCount: 0,
+        summary: `Cannot cancel task in ${task.status} state`,
+        cancelledTasks: [],
+        notFoundTasks: [],
+        alreadyCompletedTasks: [taskId],
+        error: `Task is already ${task.status}`,
+        nextActions: makeNextActions(taskId)
       };
     }
 
@@ -75,7 +124,12 @@ export class BackgroundCancelTool {
     return {
       success: true,
       taskId,
-      message: `Task ${taskId} has been cancelled`
+      cancelledCount: 1,
+      summary: `Task ${taskId} cancelled`,
+      cancelledTasks: [taskId],
+      notFoundTasks: [],
+      alreadyCompletedTasks: [],
+      nextActions: makeNextActions(taskId)
     };
   }
 
@@ -85,31 +139,43 @@ export class BackgroundCancelTool {
       (task) => task.status !== 'completed' && task.status !== 'failed'
     );
 
-    let cancelledCount = 0;
+    const cancelledTasks: string[] = [];
     const errors: string[] = [];
 
     for (const task of cancellableTasks) {
       try {
         await this.backgroundManager.cancel(task.id);
-        cancelledCount++;
+        cancelledTasks.push(task.id);
       } catch (error) {
         errors.push(`Failed to cancel ${task.id}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
+    const alreadyCompletedTasks = allTasks
+      .filter((task) => task.status === 'completed' || task.status === 'failed')
+      .map((task) => task.id);
+
     if (errors.length > 0) {
       return {
         success: false,
-        cancelledCount,
-        message: `Cancelled ${cancelledCount} task(s) with errors`,
-        error: errors.join('; ')
+        cancelledCount: cancelledTasks.length,
+        summary: `Cancelled ${cancelledTasks.length} task(s) with errors`,
+        cancelledTasks,
+        notFoundTasks: [],
+        alreadyCompletedTasks,
+        error: errors.join('; '),
+        nextActions: makeNextActions()
       };
     }
 
     return {
       success: true,
-      cancelledCount,
-      message: `Successfully cancelled ${cancelledCount} task(s)`
+      cancelledCount: cancelledTasks.length,
+      summary: `Cancelled ${cancelledTasks.length} task(s)`,
+      cancelledTasks,
+      notFoundTasks: [],
+      alreadyCompletedTasks,
+      nextActions: makeNextActions()
     };
   }
 }

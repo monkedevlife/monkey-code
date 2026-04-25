@@ -58,6 +58,7 @@ export interface HookHandlers {
   onConfig?: (context: PluginContext) => void | Promise<void>;
   onTool?: (context: ToolContext) => unknown | Promise<unknown>;
   onEvent?: (event: PluginEvent) => void | Promise<void>;
+  onChatParams?: (input: unknown, output: unknown) => void | Promise<void>;
 }
 
 // Plugin Event Types

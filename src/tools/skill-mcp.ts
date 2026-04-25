@@ -22,11 +22,18 @@ export interface SkillMcpResult {
   success: boolean;
   skillName: string;
   action: SkillMcpAction;
-  message: string;
+  summary: string;
   data?: unknown;
   serverIds?: string[];
   availableTools?: string[];
   error?: string;
+  executionTimeMs: number;
+  nextActions: Array<{
+    action: string;
+    description: string;
+    tool: string;
+    params: Record<string, string>;
+  }>;
 }
 
 export interface SkillMcpContext {
@@ -96,10 +103,47 @@ function applyGrepFilter(
   }
 }
 
+function makeErrorResult(
+  skillName: string,
+  action: SkillMcpAction,
+  summary: string,
+  error: string,
+  extra?: Partial<SkillMcpResult>
+): SkillMcpResult {
+  const availableSkills = Array.from(loadedSkills.keys());
+  return {
+    success: false,
+    skillName,
+    action,
+    summary,
+    error,
+    executionTimeMs: 0,
+    nextActions: availableSkills.length > 0
+      ? [
+          {
+            action: "load-existing",
+            description: `Load an available skill: ${availableSkills.join(", ")}`,
+            tool: "skill-mcp",
+            params: { skill: availableSkills[0] || "", action: "load" },
+          },
+        ]
+      : [
+          {
+            action: "load",
+            description: "Load a skill by name or path",
+            tool: "skill-mcp",
+            params: { skill: "<skill-name>", action: "load" },
+          },
+        ],
+    ...extra,
+  };
+}
+
 async function loadSkill(
   skillPath: string,
   ctx: SkillMcpContext
 ): Promise<SkillMcpResult> {
+  const start = Date.now();
   const skill = await ctx.manager.loadSkill(skillPath);
   const serverIds: string[] = [];
 
@@ -116,14 +160,30 @@ async function loadSkill(
     loadedAt: Date.now(),
   });
 
+  const availableTools = skill.mcpServers?.map((_, i) => `${skill.name}-mcp-${i}`) || [];
+
   return {
     success: true,
     skillName: skill.name,
     action: "load",
-    message: `Skill '${skill.name}' loaded successfully`,
+    summary: `Skill '${skill.name}' loaded`,
     serverIds: serverIds.length > 0 ? serverIds : undefined,
-    availableTools:
-      skill.mcpServers?.map((_, i) => `${skill.name}-mcp-${i}`) || [],
+    availableTools: availableTools.length > 0 ? availableTools : undefined,
+    executionTimeMs: Date.now() - start,
+    nextActions: [
+      {
+        action: "invoke",
+        description: `Invoke a tool from ${skill.name}`,
+        tool: "skill-mcp",
+        params: { skill: skill.name, action: "invoke", tool: "<tool-name>" },
+      },
+      {
+        action: "unload",
+        description: `Unload ${skill.name}`,
+        tool: "skill-mcp",
+        params: { skill: skill.name, action: "unload" },
+      },
+    ],
   };
 }
 
@@ -133,69 +193,55 @@ async function invokeSkillTool(
   toolParams: Record<string, unknown> | undefined,
   ctx: SkillMcpContext
 ): Promise<SkillMcpResult> {
+  const start = Date.now();
   const loadedSkill = loadedSkills.get(skillName);
 
   if (!loadedSkill) {
-    return {
-      success: false,
+    return makeErrorResult(
       skillName,
-      action: "invoke",
-      message: `Skill '${skillName}' is not loaded`,
-      error: `Skill not found. Available skills: ${Array.from(loadedSkills.keys()).join(", ") || "none"}`,
-    };
+      "invoke",
+      `Skill '${skillName}' not loaded`,
+      `Skill not found. Available skills: ${Array.from(loadedSkills.keys()).join(", ") || "none"}`
+    );
   }
 
   if (!toolName) {
-    return {
-      success: false,
+    return makeErrorResult(
       skillName,
-      action: "invoke",
-      message: `Tool name is required for invoke action`,
-      error: "Missing 'tool' parameter",
-    };
+      "invoke",
+      "Tool name is required",
+      "Missing 'tool' parameter"
+    );
   }
 
   if (loadedSkill.serverIds.length === 0) {
-    return {
-      success: false,
+    return makeErrorResult(
       skillName,
-      action: "invoke",
-      message: `Skill '${skillName}' has no MCP servers`,
-      error: "No MCP servers available for invocation",
-    };
+      "invoke",
+      `Skill '${skillName}' has no MCP servers`,
+      "No MCP servers available for invocation"
+    );
   }
 
   const serverId = loadedSkill.serverIds[0];
   if (!serverId) {
-    return {
-      success: false,
+    return makeErrorResult(
       skillName,
-      action: "invoke",
-      message: `Skill '${skillName}' has no MCP servers`,
-      error: "No MCP servers available for invocation",
-    };
+      "invoke",
+      `Skill '${skillName}' has no MCP servers`,
+      "No MCP servers available for invocation"
+    );
   }
 
   const server = ctx.manager.getClient(serverId);
 
   if (!server || !server.connected) {
-    return {
-      success: false,
+    return makeErrorResult(
       skillName,
-      action: "invoke",
-      message: `MCP server for skill '${skillName}' is not connected`,
-      error: "Server disconnected",
-    };
-  }
-
-  if (!toolName) {
-    return {
-      success: false,
-      skillName,
-      action: "invoke",
-      message: `Tool name is required for invoke action`,
-      error: "Missing 'tool' parameter",
-    };
+      "invoke",
+      `MCP server for '${skillName}' is not connected`,
+      "Server disconnected"
+    );
   }
 
   try {
@@ -219,19 +265,33 @@ async function invokeSkillTool(
       success: true,
       skillName,
       action: "invoke",
-      message: `Tool '${toolName}' invoked successfully`,
+      summary: `Tool '${toolName}' invoked`,
       data: JSON.parse(filteredOutput),
+      executionTimeMs: Date.now() - start,
+      nextActions: [
+        {
+          action: "invoke-again",
+          description: `Invoke another tool from ${skillName}`,
+          tool: "skill-mcp",
+          params: { skill: skillName, action: "invoke", tool: "<tool-name>" },
+        },
+        {
+          action: "unload",
+          description: `Unload ${skillName}`,
+          tool: "skill-mcp",
+          params: { skill: skillName, action: "unload" },
+        },
+      ],
     };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
+    return makeErrorResult(
       skillName,
-      action: "invoke",
-      message: `Failed to invoke tool '${toolName}'`,
-      error: errorMessage,
-    };
+      "invoke",
+      `Failed to invoke tool '${toolName}'`,
+      errorMessage
+    );
   }
 }
 
@@ -239,15 +299,16 @@ async function unloadSkill(
   skillName: string,
   ctx: SkillMcpContext
 ): Promise<SkillMcpResult> {
+  const start = Date.now();
   const loadedSkill = loadedSkills.get(skillName);
 
   if (!loadedSkill) {
-    return {
-      success: false,
+    return makeErrorResult(
       skillName,
-      action: "unload",
-      message: `Skill '${skillName}' is not loaded`,
-    };
+      "unload",
+      `Skill '${skillName}' not loaded`,
+      `Skill not found. Available skills: ${Array.from(loadedSkills.keys()).join(", ") || "none"}`
+    );
   }
 
   for (const serverId of loadedSkill.serverIds) {
@@ -260,7 +321,16 @@ async function unloadSkill(
     success: true,
     skillName,
     action: "unload",
-    message: `Skill '${skillName}' unloaded successfully`,
+    summary: `Skill '${skillName}' unloaded`,
+    executionTimeMs: Date.now() - start,
+    nextActions: [
+      {
+        action: "load",
+        description: "Load a skill",
+        tool: "skill-mcp",
+        params: { skill: "<skill-name>", action: "load" },
+      },
+    ],
   };
 }
 
@@ -271,24 +341,22 @@ export async function skillMcp(
   const { skill, action, tool, params: toolParams } = params;
 
   if (!skill || typeof skill !== "string") {
-    return {
-      success: false,
-      skillName: "unknown",
-      action: action || "load",
-      message: "Skill parameter is required",
-      error: "Missing 'skill' parameter",
-    };
+    return makeErrorResult(
+      "unknown",
+      action || "load",
+      "Skill parameter is required",
+      "Missing 'skill' parameter"
+    );
   }
 
   const validActions: SkillMcpAction[] = ["load", "invoke", "unload"];
   if (!validActions.includes(action)) {
-    return {
-      success: false,
-      skillName: skill,
-      action: action || "load",
-      message: `Invalid action: ${action}`,
-      error: `Action must be one of: ${validActions.join(", ")}`,
-    };
+    return makeErrorResult(
+      skill,
+      action || "load",
+      `Invalid action: ${action}`,
+      `Action must be one of: ${validActions.join(", ")}`
+    );
   }
 
   try {
@@ -296,13 +364,12 @@ export async function skillMcp(
       case "load": {
         const skillPath = resolveSkillPath(skill, ctx.skillPaths);
         if (!skillPath) {
-          return {
-            success: false,
-            skillName: skill,
-            action: "load",
-            message: `Skill not found: ${skill}`,
-            error: `Could not resolve skill path. Tried: ${skill}, ${skill}.md, ${skill}/SKILL.md`,
-          };
+          return makeErrorResult(
+            skill,
+            "load",
+            `Skill not found: ${skill}`,
+            `Could not resolve skill path. Tried: ${skill}, ${skill}.md, ${skill}/SKILL.md`
+          );
         }
         return await loadSkill(skillPath, ctx);
       }
@@ -316,13 +383,12 @@ export async function skillMcp(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      skillName: skill,
+    return makeErrorResult(
+      skill,
       action,
-      message: `Error processing skill-mcp action`,
-      error: errorMessage,
-    };
+      `Error processing skill-mcp action`,
+      errorMessage
+    );
   }
 }
 

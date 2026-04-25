@@ -160,7 +160,7 @@ This is test skill content.`
         expect(result.success).toBe(true);
         expect(result.skillName).toBe("my-test-skill");
         expect(result.action).toBe("load");
-        expect(result.message).toContain("loaded successfully");
+        expect(result.summary).toContain("loaded");
         expect(result.serverIds).toBeDefined();
         expect(result.serverIds?.length).toBe(1);
       });
@@ -221,7 +221,7 @@ Content.`
 
         expect(result.success).toBe(true);
         expect(result.action).toBe("invoke");
-        expect(result.message).toContain("invoked successfully");
+        expect(result.summary).toContain("invoked");
         expect(result.data).toBeDefined();
       });
     });
@@ -243,7 +243,7 @@ Content.`
 
         expect(result.success).toBe(true);
         expect(result.action).toBe("unload");
-        expect(result.message).toContain("unloaded successfully");
+        expect(result.summary).toContain("unloaded");
         expect(getLoadedSkillNames()).not.toContain("unload-test");
       });
     });
@@ -285,7 +285,7 @@ Content.`
         const result = await skillMcp(params, ctx);
 
         expect(result.success).toBe(false);
-        expect(result.message).toContain("not found");
+        expect(result.summary).toContain("not found");
       });
     });
 
@@ -319,7 +319,7 @@ Content.`
         const result = await skillMcp(params, ctx);
 
         expect(result.success).toBe(false);
-        expect(result.message).toContain("is not loaded");
+        expect(result.summary).toContain("not loaded");
       });
     });
   });
@@ -599,7 +599,7 @@ Content.`
         const result = await skillMcp(params, ctx);
 
         expect(result.success).toBe(false);
-        expect(result.message).toContain("is not loaded");
+        expect(result.summary).toContain("not loaded");
       });
     });
 

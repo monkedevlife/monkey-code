@@ -18,11 +18,22 @@ export interface InteractiveBashInput {
 
 export interface InteractiveBashOutput {
   success: boolean;
+  action: InteractiveBashAction;
   sessionId?: string;
+  command?: string;
   output?: string;
+  lines?: number;
+  sent?: string;
+  closed?: boolean;
   sessions?: InteractiveSession[];
-  message?: string;
+  summary?: string;
   error?: string;
+  nextActions: Array<{
+    action: string;
+    description: string;
+    tool: string;
+    params: Record<string, string>;
+  }>;
 }
 
 export interface InteractiveBashContext {
@@ -41,6 +52,35 @@ function getManager(ctx: InteractiveBashContext): InteractiveManager {
   return globalManager;
 }
 
+function makeErrorOutput(
+  action: InteractiveBashAction,
+  error: string,
+  sessionId?: string
+): InteractiveBashOutput {
+  return {
+    success: false,
+    action,
+    error,
+    sessionId,
+    nextActions: sessionId
+      ? [
+          {
+            action: "capture",
+            description: "Check session output for debugging",
+            tool: "interactive-bash",
+            params: { action: "capture", sessionId },
+          },
+          {
+            action: "close",
+            description: "Close the session",
+            tool: "interactive-bash",
+            params: { action: "close", sessionId },
+          },
+        ]
+      : [],
+  };
+}
+
 export async function interactiveBash(
   input: InteractiveBashInput,
   ctx: InteractiveBashContext = {}
@@ -50,8 +90,17 @@ export async function interactiveBash(
   if (!manager.isAvailable()) {
     return {
       success: false,
+      action: input.action,
       error:
         "tmux is not available on this system. Interactive bash sessions require tmux to be installed.",
+      nextActions: [
+        {
+          action: "install-tmux",
+          description: "Install tmux to use interactive bash",
+          tool: "interactive-bash",
+          params: {},
+        },
+      ],
     };
   }
 
@@ -66,23 +115,19 @@ export async function interactiveBash(
       case "close":
         return await handleClose(manager, input);
       default:
-        return {
-          success: false,
-          error: `Unknown action: ${input.action}. Supported actions: start, send, capture, close`,
-        };
+        return makeErrorOutput(
+          input.action,
+          `Unknown action: ${input.action}. Supported actions: start, send, capture, close`
+        );
     }
   } catch (error) {
     if (error instanceof InteractiveManagerError) {
-      return {
-        success: false,
-        error: error.message,
-        sessionId: error.sessionId,
-      };
+      return makeErrorOutput(input.action, error.message, error.sessionId);
     }
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return makeErrorOutput(
+      input.action,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
@@ -91,18 +136,37 @@ async function handleStart(
   input: InteractiveBashInput
 ): Promise<InteractiveBashOutput> {
   if (!input.command) {
-    return {
-      success: false,
-      error: "command is required for start action",
-    };
+    return makeErrorOutput("start", "command is required for start action");
   }
 
   const session = await manager.createSession(input.command, input.cwd);
 
   return {
     success: true,
+    action: "start",
     sessionId: session.id,
-    message: `Session started with command: ${session.command}`,
+    command: session.command,
+    summary: `Session started: ${session.id}`,
+    nextActions: [
+      {
+        action: "send",
+        description: "Send input to the session",
+        tool: "interactive-bash",
+        params: { action: "send", sessionId: session.id },
+      },
+      {
+        action: "capture",
+        description: "Capture output from the session",
+        tool: "interactive-bash",
+        params: { action: "capture", sessionId: session.id },
+      },
+      {
+        action: "close",
+        description: "Close the session when done",
+        tool: "interactive-bash",
+        params: { action: "close", sessionId: session.id },
+      },
+    ],
   };
 }
 
@@ -111,25 +175,35 @@ async function handleSend(
   input: InteractiveBashInput
 ): Promise<InteractiveBashOutput> {
   if (!input.sessionId) {
-    return {
-      success: false,
-      error: "sessionId is required for send action",
-    };
+    return makeErrorOutput("send", "sessionId is required for send action");
   }
 
   if (input.input === undefined) {
-    return {
-      success: false,
-      error: "input is required for send action",
-    };
+    return makeErrorOutput("send", "input is required for send action", input.sessionId);
   }
 
   await manager.sendKeys(input.sessionId, input.input);
 
   return {
     success: true,
+    action: "send",
     sessionId: input.sessionId,
-    message: `Keys sent to session ${input.sessionId}`,
+    sent: input.input,
+    summary: `Sent ${input.input.length} chars to ${input.sessionId}`,
+    nextActions: [
+      {
+        action: "capture",
+        description: "Capture output after sending input",
+        tool: "interactive-bash",
+        params: { action: "capture", sessionId: input.sessionId },
+      },
+      {
+        action: "send",
+        description: "Send more input",
+        tool: "interactive-bash",
+        params: { action: "send", sessionId: input.sessionId },
+      },
+    ],
   };
 }
 
@@ -138,10 +212,7 @@ async function handleCapture(
   input: InteractiveBashInput
 ): Promise<InteractiveBashOutput> {
   if (!input.sessionId) {
-    return {
-      success: false,
-      error: "sessionId is required for capture action",
-    };
+    return makeErrorOutput("capture", "sessionId is required for capture action");
   }
 
   const lines = input.lines ?? 100;
@@ -149,9 +220,31 @@ async function handleCapture(
 
   return {
     success: true,
+    action: "capture",
     sessionId: input.sessionId,
     output,
-    message: `Captured ${lines} lines from session ${input.sessionId}`,
+    lines,
+    summary: `Captured ${lines} lines from ${input.sessionId}`,
+    nextActions: [
+      {
+        action: "send",
+        description: "Send more input to the session",
+        tool: "interactive-bash",
+        params: { action: "send", sessionId: input.sessionId },
+      },
+      {
+        action: "capture",
+        description: "Capture more output",
+        tool: "interactive-bash",
+        params: { action: "capture", sessionId: input.sessionId },
+      },
+      {
+        action: "close",
+        description: "Close the session when done",
+        tool: "interactive-bash",
+        params: { action: "close", sessionId: input.sessionId },
+      },
+    ],
   };
 }
 
@@ -160,18 +253,25 @@ async function handleClose(
   input: InteractiveBashInput
 ): Promise<InteractiveBashOutput> {
   if (!input.sessionId) {
-    return {
-      success: false,
-      error: "sessionId is required for close action",
-    };
+    return makeErrorOutput("close", "sessionId is required for close action");
   }
 
   await manager.closeSession(input.sessionId);
 
   return {
     success: true,
+    action: "close",
     sessionId: input.sessionId,
-    message: `Session ${input.sessionId} closed`,
+    closed: true,
+    summary: `Session ${input.sessionId} closed`,
+    nextActions: [
+      {
+        action: "start",
+        description: "Start a new session",
+        tool: "interactive-bash",
+        params: { action: "start" },
+      },
+    ],
   };
 }
 

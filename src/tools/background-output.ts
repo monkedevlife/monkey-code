@@ -14,7 +14,19 @@ export interface BackgroundOutputResult {
   error?: string;
   startTime: string;
   endTime?: string;
+  waited: boolean;
+  waitTimeMs?: number;
+  outputTruncated: boolean;
+  outputLength: number;
+  nextActions: Array<{
+    action: string;
+    description: string;
+    tool: string;
+    params: Record<string, string>;
+  }>;
 }
+
+const MAX_OUTPUT_LENGTH = 10000;
 
 export async function getBackgroundOutput(
   manager: BackgroundManager,
@@ -34,7 +46,7 @@ export async function getBackgroundOutput(
   }
 
   if (!wait || task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
-    return formatTaskResult(task, startTime);
+    return formatTaskResult(task, startTime, wait, 0);
   }
 
   return await waitForTaskCompletion(manager, taskId, startTime, timeout);
@@ -47,7 +59,8 @@ async function waitForTaskCompletion(
   timeout: number
 ): Promise<BackgroundOutputResult> {
   const pollInterval = 100;
-  const endTime = Date.now() + timeout;
+  const waitStart = Date.now();
+  const endTime = waitStart + timeout;
 
   while (Date.now() < endTime) {
     const task = await manager.getStatus(taskId);
@@ -57,7 +70,7 @@ async function waitForTaskCompletion(
     }
 
     if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
-      return formatTaskResult(task, startTime);
+      return formatTaskResult(task, startTime, true, Date.now() - waitStart);
     }
 
     await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -68,19 +81,56 @@ async function waitForTaskCompletion(
     throw new Error(`Task not found: ${taskId}`);
   }
 
-  return formatTaskResult(task, startTime);
+  return formatTaskResult(task, startTime, true, Date.now() - waitStart);
 }
 
-function formatTaskResult(task: Task, startTime: string): BackgroundOutputResult {
+function formatTaskResult(
+  task: Task,
+  startTime: string,
+  waited: boolean,
+  waitTimeMs: number
+): BackgroundOutputResult {
   const endTime = task.completedAt ? new Date(task.completedAt).toISOString() : undefined;
+  const rawOutput = task.output || '';
+  const outputTruncated = rawOutput.length > MAX_OUTPUT_LENGTH;
+  const output = outputTruncated ? rawOutput.slice(0, MAX_OUTPUT_LENGTH) : rawOutput;
+
+  const nextActions: BackgroundOutputResult['nextActions'] = [];
+
+  if (task.status === 'pending' || task.status === 'in_progress') {
+    nextActions.push({
+      action: 'poll-again',
+      description: 'Check task progress again',
+      tool: 'background-output',
+      params: { taskId: task.id }
+    });
+    nextActions.push({
+      action: 'cancel',
+      description: 'Cancel the running task',
+      tool: 'background-cancel',
+      params: { taskId: task.id }
+    });
+  } else if (task.status === 'completed') {
+    nextActions.push({
+      action: 'delegate-followup',
+      description: 'Delegate a follow-up task',
+      tool: 'delegate-task',
+      params: { task: 'Follow-up task' }
+    });
+  }
 
   return {
     taskId: task.id,
     status: task.status,
-    output: task.output,
+    output: output || undefined,
     error: task.error,
     startTime,
-    endTime
+    endTime,
+    waited,
+    waitTimeMs: waited ? waitTimeMs : undefined,
+    outputTruncated,
+    outputLength: rawOutput.length,
+    nextActions
   };
 }
 

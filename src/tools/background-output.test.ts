@@ -65,6 +65,11 @@ describe("getBackgroundOutput", () => {
       expect(result.taskId).toBe(taskId);
       expect(["pending", "in_progress"]).toContain(result.status);
       expect(result.startTime).toBeString();
+      expect(result.waited).toBe(false);
+      expect(result.outputTruncated).toBe(false);
+      expect(result.outputLength).toBe(0);
+      expect(result.nextActions).toBeArray();
+      expect(result.nextActions.some(a => a.action === 'poll-again')).toBe(true);
     });
 
     it("should return pending task with default wait false", async () => {
@@ -77,6 +82,9 @@ describe("getBackgroundOutput", () => {
 
       expect(result.taskId).toBe(taskId);
       expect(["pending", "in_progress"]).toContain(result.status);
+      expect(result.waited).toBe(false);
+      expect(result.outputTruncated).toBe(false);
+      expect(result.nextActions).toBeArray();
     });
   });
 
@@ -95,9 +103,13 @@ describe("getBackgroundOutput", () => {
       expect(result.status).toBe("completed");
       expect(result.output).toBeString();
       expect(result.startTime).toBeString();
+      expect(result.waited).toBe(false);
+      expect(result.outputTruncated).toBe(false);
+      expect(result.outputLength).toBeGreaterThan(0);
+      expect(result.nextActions).toBeArray();
     });
 
-    it("should include endTime for completed task", async () => {
+    it("should include endTime and metadata for completed task", async () => {
       const taskId = await manager.launch({
         command: "echo 'test'",
       });
@@ -110,6 +122,8 @@ describe("getBackgroundOutput", () => {
       expect(result.endTime).toBeString();
       const endTime = new Date(result.endTime!);
       expect(endTime.getTime()).toBeGreaterThan(0);
+      expect(result.outputLength).toBeGreaterThan(0);
+      expect(result.outputTruncated).toBe(false);
     });
   });
 
@@ -127,6 +141,9 @@ describe("getBackgroundOutput", () => {
       expect(result.taskId).toBe(taskId);
       expect(result.status).toBe("failed");
       expect(result.output).toBeDefined();
+      expect(result.waited).toBe(false);
+      expect(result.outputTruncated).toBe(false);
+      expect(result.nextActions).toBeArray();
     });
   });
 
@@ -144,6 +161,9 @@ describe("getBackgroundOutput", () => {
       const elapsedMs = Date.now() - startMs;
 
       expect(result.status).toBe("completed");
+      expect(result.waited).toBe(true);
+      expect(result.waitTimeMs).toBeDefined();
+      expect(result.waitTimeMs!).toBeLessThan(1000);
       expect(elapsedMs).toBeLessThan(1000);
     });
 
@@ -157,6 +177,9 @@ describe("getBackgroundOutput", () => {
 
       expect(result.taskId).toBe(taskId);
       expect(["completed", "failed"]).toContain(result.status);
+      expect(result.waited).toBe(true);
+      expect(result.waitTimeMs).toBeDefined();
+      expect(result.waitTimeMs!).toBeGreaterThan(0);
     });
 
     it("should timeout waiting for task", async () => {
@@ -169,6 +192,10 @@ describe("getBackgroundOutput", () => {
 
       expect(result.taskId).toBe(taskId);
       expect(["pending", "in_progress"]).toContain(result.status);
+      expect(result.waited).toBe(true);
+      expect(result.waitTimeMs).toBeDefined();
+      expect(result.waitTimeMs!).toBeGreaterThanOrEqual(200);
+      expect(result.nextActions.some(a => a.action === 'poll-again')).toBe(true);
     });
   });
 
@@ -186,9 +213,14 @@ describe("getBackgroundOutput", () => {
       expect(result).toHaveProperty("taskId");
       expect(result).toHaveProperty("status");
       expect(result).toHaveProperty("startTime");
+      expect(result).toHaveProperty("waited");
+      expect(result).toHaveProperty("outputTruncated");
+      expect(result).toHaveProperty("outputLength");
+      expect(result).toHaveProperty("nextActions");
       expect(result.taskId).toBe(taskId);
       expect(typeof result.status).toBe("string");
       expect(typeof result.startTime).toBe("string");
+      expect(Array.isArray(result.nextActions)).toBe(true);
     });
 
     it("should include optional error field", async () => {
@@ -204,6 +236,9 @@ describe("getBackgroundOutput", () => {
       expect(result).toHaveProperty("taskId");
       expect(result).toHaveProperty("status");
       expect(result).toHaveProperty("startTime");
+      expect(result).toHaveProperty("waited");
+      expect(result).toHaveProperty("outputTruncated");
+      expect(result).toHaveProperty("nextActions");
       expect(result.status).toBe("failed");
     });
   });

@@ -76,7 +76,7 @@ describe("interactive-bash", () => {
 
       expect(result.success).toBe(true);
       expect(result.sessionId).toMatch(/^monkey-\d+-\d+$/);
-      expect(result.message).toContain("Session started");
+      expect(result.summary).toContain("Session started");
 
       await ctx.manager?.closeSession(result.sessionId!);
     });
@@ -136,7 +136,7 @@ describe("interactive-bash", () => {
       );
 
       expect(sendResult.success).toBe(true);
-      expect(sendResult.message).toContain("Keys sent");
+      expect(sendResult.summary).toContain("Sent");
 
       await ctx.manager?.closeSession(startResult.sessionId!);
     });
@@ -240,7 +240,7 @@ describe("interactive-bash", () => {
       );
 
       expect(captureResult.success).toBe(true);
-      expect(captureResult.message).toContain("10 lines");
+      expect(captureResult.summary).toContain("10 lines");
 
       await ctx.manager?.closeSession(startResult.sessionId!);
     });
@@ -297,7 +297,7 @@ describe("interactive-bash", () => {
       );
 
       expect(closeResult.success).toBe(true);
-      expect(closeResult.message).toContain("closed");
+      expect(closeResult.summary).toContain("closed");
     });
 
     it("should return error when sessionId is missing", async () => {
@@ -326,7 +326,7 @@ describe("interactive-bash", () => {
       const result = await interactiveBash(input, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain("closed");
+      expect(result.summary).toContain("closed");
     });
   });
 

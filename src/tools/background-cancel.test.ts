@@ -35,7 +35,12 @@ describe("BackgroundCancelTool", () => {
 
       expect(result.success).toBe(true);
       expect(result.taskId).toBe(taskId);
-      expect(result.message).toContain("cancelled");
+      expect(result.summary).toContain("cancelled");
+      expect(result.cancelledCount).toBe(1);
+      expect(result.cancelledTasks).toContain(taskId);
+      expect(result.notFoundTasks).toEqual([]);
+      expect(result.alreadyCompletedTasks).toEqual([]);
+      expect(result.nextActions).toBeArray();
 
       const status = await backgroundManager.getStatus(taskId);
       expect(status?.status).toBe("failed");
@@ -50,7 +55,9 @@ describe("BackgroundCancelTool", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Task not found");
-      expect(result.message).toContain("not found");
+      expect(result.summary).toContain("not found");
+      expect(result.notFoundTasks).toContain("non-existent-task");
+      expect(result.cancelledTasks).toEqual([]);
     });
 
     it("should prevent cancelling already completed task", async () => {
@@ -97,7 +104,7 @@ describe("BackgroundCancelTool", () => {
       const result = await cancelTool.execute(params);
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Either taskId or all parameter is required");
+      expect(result.summary).toContain("Either taskId or all parameter is required");
     });
   });
 
@@ -119,7 +126,9 @@ describe("BackgroundCancelTool", () => {
 
       expect(result.success).toBe(true);
       expect(result.cancelledCount).toBeGreaterThanOrEqual(2);
-      expect(result.message).toContain("Successfully cancelled");
+      expect(result.summary).toContain("Cancelled");
+      expect(result.cancelledTasks.length).toBeGreaterThanOrEqual(2);
+      expect(result.nextActions).toBeArray();
 
       const status1 = await backgroundManager.getStatus(taskId1);
       const status2 = await backgroundManager.getStatus(taskId2);
@@ -164,8 +173,11 @@ describe("BackgroundCancelTool", () => {
       const result = await cancelTool.execute(params);
 
       expect(result).toHaveProperty("success");
-      expect(result).toHaveProperty("message");
+      expect(result).toHaveProperty("summary");
       expect(result).toHaveProperty("error");
+      expect(result).toHaveProperty("cancelledTasks");
+      expect(result).toHaveProperty("notFoundTasks");
+      expect(result).toHaveProperty("alreadyCompletedTasks");
     });
 
     it("should not throw - always returns result object", async () => {
