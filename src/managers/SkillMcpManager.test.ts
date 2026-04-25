@@ -543,7 +543,29 @@ Body content.`
         grepApp: { enabled: true },
       };
 
-      await expect(manager.initializeBuiltinMcps(config)).rejects.toThrow();
+      await expect(manager.initializeBuiltinMcps(config)).resolves.toBeUndefined();
+    });
+
+    it("should use npx fallback for chrome devtools when executable is configured", async () => {
+      const command = await (manager as unknown as {
+        resolveChromeDevToolsCommand: (executable?: string) => Promise<{ command: string; args: string[] }>;
+      }).resolveChromeDevToolsCommand('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+
+      expect(command).toEqual({
+        command: 'npx',
+        args: ['-y', 'chrome-devtools-mcp@latest'],
+      });
+    });
+
+    it("should not start local servers for remote builtin MCPs", async () => {
+      const config: McpsConfig = {
+        context7: { enabled: true, apiKey: 'test-key' },
+        grepApp: { enabled: true },
+      };
+
+      await manager.initializeBuiltinMcps(config);
+
+      expect(manager.getServerCount()).toBe(0);
     });
   });
 

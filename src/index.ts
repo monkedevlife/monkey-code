@@ -71,6 +71,7 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
   const mutableConfig = config as OpenCodeConfig & {
     agent?: Record<string, unknown>;
     default_agent?: string;
+    mcp?: Record<string, unknown>;
   };
   const agentConfig =
     mutableConfig.agent && typeof mutableConfig.agent === 'object' && !Array.isArray(mutableConfig.agent)
@@ -100,6 +101,44 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
 
   mutableConfig.agent = agentConfig;
   mutableConfig.default_agent = 'punch';
+
+  const mcpConfig =
+    mutableConfig.mcp && typeof mutableConfig.mcp === 'object' && !Array.isArray(mutableConfig.mcp)
+      ? mutableConfig.mcp
+      : {};
+
+  if (pluginState.config?.mcps?.context7?.enabled !== false) {
+    mcpConfig.context7 = {
+      ...(mcpConfig.context7 && typeof mcpConfig.context7 === 'object' && !Array.isArray(mcpConfig.context7)
+        ? (mcpConfig.context7 as Record<string, unknown>)
+        : {}),
+      type: 'remote',
+      url: 'https://mcp.context7.com/mcp',
+      enabled: true,
+      ...(pluginState.config?.mcps?.context7?.apiKey
+        ? {
+            headers: {
+              Authorization: `Bearer ${pluginState.config.mcps.context7.apiKey}`,
+            },
+          }
+        : {}),
+      oauth: false,
+    };
+  }
+
+  if (pluginState.config?.mcps?.grepApp?.enabled !== false) {
+    mcpConfig.grep_app = {
+      ...(mcpConfig.grep_app && typeof mcpConfig.grep_app === 'object' && !Array.isArray(mcpConfig.grep_app)
+        ? (mcpConfig.grep_app as Record<string, unknown>)
+        : {}),
+      type: 'remote',
+      url: 'https://mcp.grep.app',
+      enabled: true,
+      oauth: false,
+    };
+  }
+
+  mutableConfig.mcp = mcpConfig;
 }
 
 function resolveAgentConfig(agentName?: string) {

@@ -84,11 +84,17 @@ export class SkillMcpManager implements ISkillMcpManager {
   ): Promise<void> {
     if (!config) return;
 
+    const command = await this.resolveChromeDevToolsCommand(config.executable);
     const serverId = "builtin:chrome-devtools";
     const serverConfig: McpServerConfig = {
       type: "stdio",
-      command: config.executable || "chrome-devtools-mcp",
-      args: config.flags || [],
+      command: command.command,
+      args: [
+        ...command.args,
+        ...(config.executable ? ["--executablePath", config.executable] : []),
+        ...(config.profile ? ["--userDataDir", config.profile] : []),
+        ...((config.flags || []).flatMap((flag) => ["--chromeArg", flag])),
+      ],
       env: {},
     };
 
@@ -103,52 +109,48 @@ export class SkillMcpManager implements ISkillMcpManager {
     }
   }
 
+  private async resolveChromeDevToolsCommand(executable?: string): Promise<{
+    command: string;
+    args: string[];
+  }> {
+    if (executable) {
+      return {
+        command: "npx",
+        args: ["-y", "chrome-devtools-mcp@latest"],
+      };
+    }
+
+    try {
+      const proc = Bun.spawn(["chrome-devtools-mcp", "--help"], {
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      const exitCode = await proc.exited;
+      if (exitCode === 0) {
+        return {
+          command: "chrome-devtools-mcp",
+          args: [],
+        };
+      }
+    } catch {
+    }
+
+    return {
+      command: "npx",
+      args: ["-y", "chrome-devtools-mcp@latest"],
+    };
+  }
+
   private async initializeContext7(
     config: McpsConfig["context7"]
   ): Promise<void> {
     if (!config) return;
-
-    const serverId = "builtin:context7";
-    const serverConfig: McpServerConfig = {
-      type: "stdio",
-      command: "context7-mcp",
-      args: config.apiKey ? ["--api-key", config.apiKey] : [],
-      env: {},
-    };
-
-    try {
-      await this.startMcp(serverConfig, serverId);
-    } catch (error) {
-      throw new SkillMcpManagerError(
-        `Failed to initialize Context7 MCP: ${error instanceof Error ? error.message : String(error)}`,
-        "CONTEXT7_INIT_ERROR",
-        serverId
-      );
-    }
   }
 
   private async initializeGrepApp(
     config: McpsConfig["grepApp"]
   ): Promise<void> {
     if (!config) return;
-
-    const serverId = "builtin:grep-app";
-    const serverConfig: McpServerConfig = {
-      type: "stdio",
-      command: "grep-app-mcp",
-      args: [],
-      env: {},
-    };
-
-    try {
-      await this.startMcp(serverConfig, serverId);
-    } catch (error) {
-      throw new SkillMcpManagerError(
-        `Failed to initialize Grep.app MCP: ${error instanceof Error ? error.message : String(error)}`,
-        "GREP_APP_INIT_ERROR",
-        serverId
-      );
-    }
   }
 
   async loadSkill(skillPath: string): Promise<SkillDefinition> {

@@ -229,6 +229,10 @@ function createDefaultAgentConfig(name: AgentName): AgentConfig {
   });
 }
 
+function defaultChromeExecutable() {
+  return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+}
+
 export function createDefaultAgentConfigs(): Record<AgentName, AgentConfig> {
   return Object.fromEntries(
     AGENT_NAMES.map((name) => [name, createDefaultAgentConfig(name)]),
@@ -240,7 +244,11 @@ export function createUserOpencodeConfigTemplate(): Partial<Config> {
     $schema: CONFIG_SCHEMA_URL,
     agents: createDefaultAgentConfigs(),
     background: {},
-    mcps: {},
+    mcps: {
+      chromeDevTools: {
+        executable: defaultChromeExecutable(),
+      },
+    },
     sqlite: {},
     tmux: {},
   };
