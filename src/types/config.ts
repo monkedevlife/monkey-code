@@ -1,6 +1,7 @@
 export type {
   Config,
   AgentConfig,
+  ThinkingConfig,
   BackgroundConfig,
   ChromeDevToolsConfig,
   Context7Config,

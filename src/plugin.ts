@@ -16,6 +16,7 @@ import { getBackgroundOutput, type BackgroundOutputParams, type BackgroundOutput
 import { createBackgroundCancelTool, type BackgroundCancelParams, type BackgroundCancelResult } from './tools/background-cancel.js';
 import { interactiveBash, type InteractiveBashInput, type InteractiveBashOutput, interactiveBashSchema, cleanupSessions } from './tools/interactive-bash.js';
 import { skillMcp, type SkillMcpParams, type SkillMcpResult, skillMcpSchema, cleanupAllSkills } from './tools/skill-mcp.js';
+import { handleChatParams } from './hooks/chat-params.js';
 
 interface PluginState {
   config?: Config;
@@ -116,6 +117,11 @@ function createMockOpenCodeClient(): any {
   };
 }
 
+function resolveAgentConfig(agentName?: string) {
+  if (!pluginState.config?.agents || !agentName) return undefined;
+  return pluginState.config.agents[agentName as keyof typeof pluginState.config.agents];
+}
+
 async function handleDelegateTask(params: Record<string, unknown>): Promise<DelegateTaskOutput> {
   if (!pluginState.isInitialized || !pluginState.backgroundManager) {
     throw new Error('Plugin not initialized');
@@ -132,7 +138,8 @@ async function handleDelegateTask(params: Record<string, unknown>): Promise<Dele
   const ctx = {
     backgroundManager: pluginState.backgroundManager,
     client,
-    parentSessionId: pluginState.currentSessionId
+    parentSessionId: pluginState.currentSessionId,
+    agentConfig: resolveAgentConfig(input.agent ?? 'punch')
   };
 
   return await delegateTask(input, ctx);
@@ -310,6 +317,10 @@ export function createPlugin(): MonkeyCodePlugin {
         case 'task:failed':
           break;
       }
+    },
+
+    onChatParams: async (input: unknown, output: unknown): Promise<void> => {
+      await handleChatParams(input, output);
     }
   };
 

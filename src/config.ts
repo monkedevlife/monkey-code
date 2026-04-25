@@ -2,19 +2,32 @@ import { z } from 'zod';
 import { readFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
+const ThinkingConfigSchema = z.object({
+  type: z.enum(['enabled', 'disabled']),
+  budgetTokens: z.number().positive().optional(),
+});
+
 const AgentConfigSchema = z.object({
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
+  topP: z.number().min(0).max(1).optional(),
+  topK: z.number().positive().optional(),
+  maxTokens: z.number().positive().optional(),
+  presencePenalty: z.number().min(-2).max(2).optional(),
+  frequencyPenalty: z.number().min(-2).max(2).optional(),
+  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+  thinking: ThinkingConfigSchema.optional(),
+  providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
 
 const AgentsSchema = z.object({
   punch: AgentConfigSchema.optional(),
   harambe: AgentConfigSchema.optional(),
   caesar: AgentConfigSchema.optional(),
-  kong: AgentConfigSchema.optional(),
-  rafiki: AgentConfigSchema.optional(),
-  abu: AgentConfigSchema.optional(),
   george: AgentConfigSchema.optional(),
+  tasker: AgentConfigSchema.optional(),
+  scout: AgentConfigSchema.optional(),
+  builder: AgentConfigSchema.optional(),
 });
 
 const BackgroundConfigSchema = z.object({
@@ -72,6 +85,7 @@ const ConfigSchema = z.object({
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+export type ThinkingConfig = z.infer<typeof ThinkingConfigSchema>;
 export type BackgroundConfig = z.infer<typeof BackgroundConfigSchema>;
 export type ChromeDevToolsConfig = z.infer<typeof ChromeDevToolsSchema>;
 export type Context7Config = z.infer<typeof Context7Schema>;
@@ -119,15 +133,16 @@ function getConfigDirs() {
   return {
     projectConfig: '.opencode/monkey-code.json',
     userConfigDir: join(home, '.config', 'monkey-code'),
-    userConfigFile: join(home, '.config', 'monkey-code', 'config.json'),
     dbPath: join(home, '.config', 'monkey-code', 'monkey.db'),
     tasksDir: join(home, '.config', 'monkey-code', 'tasks'),
     logsDir: join(home, '.config', 'monkey-code', 'logs'),
+    presetsDir: join(home, '.config', 'monkey-code', 'presets'),
+    presetManifestFile: join(home, '.config', 'monkey-code', 'preset-manifest.json'),
   };
 }
 
 function ensureConfigDir() {
-  const { userConfigDir, tasksDir, logsDir } = getConfigDirs();
+  const { userConfigDir, tasksDir, logsDir, presetsDir } = getConfigDirs();
   
   if (!existsSync(userConfigDir)) {
     mkdirSync(userConfigDir, { recursive: true });
@@ -137,6 +152,9 @@ function ensureConfigDir() {
   }
   if (!existsSync(logsDir)) {
     mkdirSync(logsDir, { recursive: true });
+  }
+  if (!existsSync(presetsDir)) {
+    mkdirSync(presetsDir, { recursive: true });
   }
 }
 
@@ -155,29 +173,11 @@ function loadProjectConfig(): Partial<Config> {
   }
 }
 
-function loadUserConfig(): Partial<Config> {
-  const { userConfigFile } = getConfigDirs();
-  
-  if (!existsSync(userConfigFile)) {
-    return {};
-  }
-  
-  try {
-    const content = readFileSync(userConfigFile, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    throw new Error(`Failed to load user config from ${userConfigFile}: ${error}`);
-  }
-}
-
 export function loadConfig(): Config {
   ensureConfigDir();
-  
-  const userConfig = loadUserConfig();
   const projectConfig = loadProjectConfig();
-  
-  const userMerged = { ...DEFAULT_CONFIG, ...userConfig };
-  const finalMerged = { ...userMerged, ...projectConfig };
+
+  const finalMerged = { ...DEFAULT_CONFIG, ...projectConfig };
   
   try {
     return ConfigSchema.parse(finalMerged);

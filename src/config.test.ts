@@ -39,10 +39,11 @@ describe('Config System', () => {
     it('should create user config directory structure', () => {
       loadConfig();
 
-      const { userConfigDir, tasksDir, logsDir } = getConfigPaths();
+      const { userConfigDir, tasksDir, logsDir, presetsDir } = getConfigPaths();
       expect(existsSync(userConfigDir)).toBe(true);
       expect(existsSync(tasksDir)).toBe(true);
       expect(existsSync(logsDir)).toBe(true);
+      expect(existsSync(presetsDir)).toBe(true);
     });
 
     it('should load project config from .opencode/monkey-code.json', () => {
@@ -199,10 +200,11 @@ describe('Config System', () => {
 
       expect(paths.projectConfig).toBe('.opencode/monkey-code.json');
       expect(paths.userConfigDir).toContain('.config/monkey-code');
-      expect(paths.userConfigFile).toContain('.config/monkey-code/config.json');
       expect(paths.dbPath).toContain('.config/monkey-code/monkey.db');
       expect(paths.tasksDir).toContain('.config/monkey-code/tasks');
       expect(paths.logsDir).toContain('.config/monkey-code/logs');
+      expect(paths.presetsDir).toContain('.config/monkey-code/presets');
+      expect(paths.presetManifestFile).toContain('.config/monkey-code/preset-manifest.json');
     });
 
     it('should have correct default values for background config', () => {
@@ -232,7 +234,7 @@ describe('Config System', () => {
       const projectConfig = {
         agents: {
           punch: { model: 'gpt-4' },
-          kong: { temperature: 0.5 },
+          tasker: { temperature: 0.5 },
         },
       };
       writeFileSync('.opencode/monkey-code.json', JSON.stringify(projectConfig));
@@ -241,8 +243,8 @@ describe('Config System', () => {
 
       expect(config.agents?.punch?.model).toBe('gpt-4');
       expect(config.agents?.punch?.temperature).toBeUndefined();
-      expect(config.agents?.kong?.model).toBeUndefined();
-      expect(config.agents?.kong?.temperature).toBe(0.5);
+      expect(config.agents?.tasker?.model).toBeUndefined();
+      expect(config.agents?.tasker?.temperature).toBe(0.5);
     });
 
     it('should validate temperature range (0-2)', () => {
@@ -250,6 +252,76 @@ describe('Config System', () => {
       const invalidConfig = {
         agents: {
           punch: { temperature: 3 }, // Invalid: max is 2
+        },
+      };
+      writeFileSync('.opencode/monkey-code.json', JSON.stringify(invalidConfig));
+
+      expect(() => loadConfig()).toThrow();
+    });
+
+    it('should allow all agent inference params', () => {
+      mkdirSync('.opencode', { recursive: true });
+      const projectConfig = {
+        agents: {
+          punch: {
+            model: 'gpt-4',
+            temperature: 0.7,
+            topP: 0.9,
+            topK: 50,
+            maxTokens: 4096,
+            presencePenalty: 0.5,
+            frequencyPenalty: -0.5,
+            reasoningEffort: 'high',
+            thinking: { type: 'enabled', budgetTokens: 16000 },
+            providerOptions: { seed: 42 },
+          },
+        },
+      };
+      writeFileSync('.opencode/monkey-code.json', JSON.stringify(projectConfig));
+
+      const config = loadConfig();
+
+      expect(config.agents?.punch?.model).toBe('gpt-4');
+      expect(config.agents?.punch?.temperature).toBe(0.7);
+      expect(config.agents?.punch?.topP).toBe(0.9);
+      expect(config.agents?.punch?.topK).toBe(50);
+      expect(config.agents?.punch?.maxTokens).toBe(4096);
+      expect(config.agents?.punch?.presencePenalty).toBe(0.5);
+      expect(config.agents?.punch?.frequencyPenalty).toBe(-0.5);
+      expect(config.agents?.punch?.reasoningEffort).toBe('high');
+      expect(config.agents?.punch?.thinking).toEqual({ type: 'enabled', budgetTokens: 16000 });
+      expect(config.agents?.punch?.providerOptions).toEqual({ seed: 42 });
+    });
+
+    it('should validate topP range (0-1)', () => {
+      mkdirSync('.opencode', { recursive: true });
+      const invalidConfig = {
+        agents: {
+          punch: { topP: 1.5 },
+        },
+      };
+      writeFileSync('.opencode/monkey-code.json', JSON.stringify(invalidConfig));
+
+      expect(() => loadConfig()).toThrow();
+    });
+
+    it('should validate reasoningEffort enum', () => {
+      mkdirSync('.opencode', { recursive: true });
+      const invalidConfig = {
+        agents: {
+          punch: { reasoningEffort: 'extreme' },
+        },
+      };
+      writeFileSync('.opencode/monkey-code.json', JSON.stringify(invalidConfig));
+
+      expect(() => loadConfig()).toThrow();
+    });
+
+    it('should validate thinking config', () => {
+      mkdirSync('.opencode', { recursive: true });
+      const invalidConfig = {
+        agents: {
+          punch: { thinking: { type: 'auto' } },
         },
       };
       writeFileSync('.opencode/monkey-code.json', JSON.stringify(invalidConfig));
@@ -289,6 +361,7 @@ describe('Config System', () => {
 
       expect(config.mcps?.context7?.apiKey).toBe('secret-key-123');
     });
+
   });
 
   describe('ConfigSchema validation', () => {
