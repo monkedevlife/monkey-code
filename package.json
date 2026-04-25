@@ -9,7 +9,8 @@
     "build": "bun build --target=bun --outdir=dist src/index.ts",
     "typecheck": "bun --bun tsc --noEmit 2>&1 | grep -E '^(src/|[0-9]+ error)' || true",
     "test": "bun test",
-    "dev": "bun --watch run src/index.ts"
+    "dev": "bun --watch run src/index.ts",
+    "postinstall": "bun run scripts/postinstall.ts"
   },
   "dependencies": {
     "js-yaml": "^4.1.0",

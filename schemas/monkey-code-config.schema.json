@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monkey-code.dev/schemas/monkey-code-config.schema.json",
+  "title": "Monkey Code Plugin Configuration",
+  "description": "Configuration schema for the Monkey Code OpenCode plugin",
+  "type": "object",
+  "properties": {
+    "agents": {
+      "type": "object",
+      "description": "Configuration for monkey agents. Main agents: punch (all-in-one), caesar (planning), harambe (critic), george (creative). Generic sub-agents: tasker (atomic tasks), scout (skill/mcp exploration), builder (code components)",
+      "properties": {
+        "punch": {
+          "$ref": "#/$defs/agentConfig",
+          "description": "All-in-one feature completer - default agent for end-to-end tasks"
+        },
+        "caesar": {
+          "$ref": "#/$defs/agentConfig",
+          "description": "Planning mode - strategic analysis and architecture design"
+        },
+        "harambe": {
+          "$ref": "#/$defs/agentConfig",
+          "description": "Critic and analyst - code review, analysis, and quality assessment"
+        },
+        "george": {
+          "$ref": "#/$defs/agentConfig",
+          "description": "Creative expert - design, UX, and creative problem solving"
+        },
+        "tasker": {
+          "$ref": "#/$defs/agentConfig",
+          "description": "Generic sub-agent - atomic tasks and small implementations"
+        },
+        "scout": {
+          "$ref": "#/$defs/agentConfig",
+          "description": "Generic sub-agent - skill/mcp loading and exploration"
+        },
+        "builder": {
+          "$ref": "#/$defs/agentConfig",
+          "description": "Generic sub-agent - FE components and code blocks"
+        }
+      },
+      "additionalProperties": false
+    },
+    "background": {
+      "type": "object",
+      "description": "Background task execution settings",
+      "properties": {
+        "maxConcurrent": {
+          "type": "integer",
+          "description": "Maximum number of concurrent background tasks",
+          "minimum": 1,
+          "default": 5
+        },
+        "pollInterval": {
+          "type": "integer",
+          "description": "Interval in milliseconds to check for background task updates",
+          "minimum": 100,
+          "default": 5000
+        }
+      },
+      "additionalProperties": false
+    },
+    "mcps": {
+      "type": "object",
+      "description": "MCP (Model Context Protocol) server configurations",
+      "properties": {
+        "chromeDevTools": {
+          "type": "object",
+          "description": "Chrome DevTools MCP for browser automation",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable/disable Chrome DevTools MCP",
+              "default": true
+            },
+            "executable": {
+              "type": "string",
+              "description": "Path to Chrome/Chromium executable"
+            },
+            "profile": {
+              "type": "string",
+              "description": "Chrome profile directory to use"
+            },
+            "flags": {
+              "type": "array",
+              "description": "Additional Chrome command-line flags",
+              "items": {
+                "type": "string"
+              }
+            },
+            "search": {
+              "type": "object",
+              "description": "Web search configuration for Chrome DevTools",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable web search via Chrome",
+                  "default": true
+                },
+                "engine": {
+                  "type": "string",
+                  "description": "Search engine to use",
+                  "enum": ["google", "bing"],
+                  "default": "google"
+                },
+                "maxResults": {
+                  "type": "integer",
+                  "description": "Maximum number of search results",
+                  "minimum": 1,
+                  "default": 10
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "context7": {
+          "type": "object",
+          "description": "Context7 documentation search MCP",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable/disable Context7 documentation search",
+              "default": true
+            },
+            "apiKey": {
+              "type": "string",
+              "description": "API key for Context7 (if required)"
+            }
+          },
+          "additionalProperties": false
+        },
+        "grepApp": {
+          "type": "object",
+          "description": "Grep.app code search MCP",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable/disable Grep.app code search",
+              "default": true
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "sqlite": {
+      "type": "object",
+      "description": "SQLite database configuration for vector memory",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Custom path to SQLite database file"
+        },
+        "vectorDimensions": {
+          "type": "integer",
+          "description": "Dimensions for vector embeddings",
+          "minimum": 1,
+          "default": 1536
+        },
+        "maxMemoryItems": {
+          "type": "integer",
+          "description": "Maximum number of memory items to store",
+          "minimum": 1,
+          "default": 10000
+        }
+      },
+      "additionalProperties": false
+    },
+    "tmux": {
+      "type": "object",
+      "description": "TMUX configuration for interactive bash sessions",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable/disable TMUX integration",
+          "default": true
+        },
+        "path": {
+          "type": "string",
+          "description": "Custom path to tmux executable"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "agentConfig": {
+      "type": "object",
+      "description": "Configuration for an individual monkey agent",
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model identifier for this agent (e.g., 'openrouter/openai/gpt-4o')"
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Sampling temperature (0 = deterministic, 2 = very creative)",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "topP": {
+          "type": "number",
+          "description": "Nucleus sampling probability (0 = only top token, 1 = all tokens)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "topK": {
+          "type": "integer",
+          "description": "Top-k sampling limit (number of highest probability tokens to consider)",
+          "minimum": 1
+        },
+        "maxTokens": {
+          "type": "integer",
+          "description": "Maximum number of tokens to generate in the response",
+          "minimum": 1
+        },
+        "presencePenalty": {
+          "type": "number",
+          "description": "Penalty for repeating tokens already present in the text (-2 to 2)",
+          "minimum": -2,
+          "maximum": 2
+        },
+        "frequencyPenalty": {
+          "type": "number",
+          "description": "Penalty for repeating tokens based on their frequency (-2 to 2)",
+          "minimum": -2,
+          "maximum": 2
+        },
+        "reasoningEffort": {
+          "type": "string",
+          "description": "Reasoning effort level for OpenAI models",
+          "enum": ["none", "minimal", "low", "medium", "high", "xhigh"]
+        },
+        "thinking": {
+          "type": "object",
+          "description": "Extended thinking configuration for Anthropic models",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Enable or disable extended thinking",
+              "enum": ["enabled", "disabled"]
+            },
+            "budgetTokens": {
+              "type": "integer",
+              "description": "Maximum tokens to allocate for thinking",
+              "minimum": 1
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": false
+        },
+        "providerOptions": {
+          "type": "object",
+          "description": "Provider-specific options passed directly to the model API",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
