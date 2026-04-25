@@ -1,10 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://monkey-code.dev/schemas/monkey-code-config.schema.json",
+  "$id": "https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json",
   "title": "Monkey Code Plugin Configuration",
   "description": "Configuration schema for the Monkey Code OpenCode plugin",
   "type": "object",
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference for editor validation and autocomplete"
+    },
     "agents": {
       "type": "object",
       "description": "Configuration for monkey agents. Main agents: punch (all-in-one), caesar (planning), harambe (critic), george (creative). Generic sub-agents: tasker (atomic tasks), scout (skill/mcp exploration), builder (code components)",

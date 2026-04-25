@@ -108,6 +108,7 @@ describe('Config System', () => {
     it('should generate user config template from bundled agent defaults', () => {
       const template = createUserOpencodeConfigTemplate();
 
+      expect(template.$schema).toBe('https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json');
       expect(template.agents?.punch?.model).toBe('github-copilot/gpt-5.4');
       expect(template.agents?.caesar?.model).toBe('github-copilot/gpt-5.4');
       expect(template.agents?.harambe?.model).toBe('github-copilot/gemini-3-flash-preview');
@@ -132,11 +133,13 @@ describe('Config System', () => {
 
       const result = writeUserOpencodeConfig();
       const written = JSON.parse(readFileSync(userOpencodeConfig, 'utf-8')) as {
+        $schema?: string;
         background?: { maxConcurrent?: number };
         agents?: { punch?: { temperature?: number; model?: string }; harambe?: { model?: string } };
       };
 
       expect(result.written).toBe(true);
+      expect(written.$schema).toBe('https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json');
       expect(written.background?.maxConcurrent).toBe(11);
       expect(written.agents?.punch?.temperature).toBe(0.9);
       expect(written.agents?.punch?.model).toBe('github-copilot/gpt-5.4');

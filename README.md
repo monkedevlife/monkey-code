@@ -94,7 +94,7 @@ For IDE autocomplete and validation, reference the JSON schema in your config:
 
 ```json
 {
-  "$schema": "./node_modules/monkey-code/schemas/monkey-code-config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json",
   "agents": { ... }
 }
 ```
@@ -106,7 +106,7 @@ Or in VS Code, add to your workspace settings:
   "json.schemas": [
     {
       "fileMatch": ["monkey-code.json"],
-      "url": "./node_modules/monkey-code/schemas/monkey-code-config.schema.json"
+      "url": "https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json"
     }
   ]
 }

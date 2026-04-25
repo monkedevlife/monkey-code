@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const AGENT_NAMES = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder'] as const;
+const CONFIG_SCHEMA_URL = 'https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json';
 
 const ThinkingConfigSchema = z.object({
   type: z.enum(['enabled', 'disabled']),
@@ -78,6 +79,7 @@ const TmuxConfigSchema = z.object({
 });
 
 const ConfigSchema = z.object({
+  $schema: z.string().optional(),
   agents: AgentsSchema.optional(),
   background: BackgroundConfigSchema.optional(),
   mcps: McpsSchema.optional(),
@@ -235,6 +237,7 @@ export function createDefaultAgentConfigs(): Record<AgentName, AgentConfig> {
 
 export function createUserOpencodeConfigTemplate(): Partial<Config> {
   return {
+    $schema: CONFIG_SCHEMA_URL,
     agents: createDefaultAgentConfigs(),
     background: {},
     mcps: {},
@@ -253,7 +256,10 @@ export function writeUserOpencodeConfig(projectRoot = process.cwd()) {
 
   if (existsSync(userOpencodeConfig)) {
     const existing = readConfigFileIfExists(userOpencodeConfig);
-    const merged = mergeConfigLayers(template, existing);
+    const merged = {
+      ...mergeConfigLayers(template, existing),
+      $schema: CONFIG_SCHEMA_URL,
+    };
     const before = JSON.stringify(existing);
     const after = JSON.stringify(merged);
 
