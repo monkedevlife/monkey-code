@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
+const AGENT_NAMES = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder'] as const;
+
 const ThinkingConfigSchema = z.object({
   type: z.enum(['enabled', 'disabled']),
   budgetTokens: z.number().positive().optional(),
@@ -93,6 +95,7 @@ export type GrepAppConfig = z.infer<typeof GrepAppSchema>;
 export type McpsConfig = z.infer<typeof McpsSchema>;
 export type SqliteConfig = z.infer<typeof SqliteConfigSchema>;
 export type TmuxConfig = z.infer<typeof TmuxConfigSchema>;
+type AgentName = typeof AGENT_NAMES[number];
 
 const DEFAULT_CONFIG: Config = {
   agents: {},
@@ -173,6 +176,10 @@ function loadConfigFile(filePath: string): Partial<Config> {
   }
 }
 
+function readConfigFileIfExists(filePath: string): Partial<Config> {
+  return loadConfigFile(filePath);
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -192,9 +199,43 @@ function mergeConfigLayers<T extends Record<string, unknown>>(...layers: T[]): T
   }, {} as T);
 }
 
+function readAgentFrontmatter(name: AgentName) {
+  const filePath = new URL(`../agents/${name}.md`, import.meta.url);
+  const content = readFileSync(filePath, 'utf-8');
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  if (!match) {
+    throw new Error(`Failed to parse agent frontmatter for ${name}`);
+  }
+
+  return Object.fromEntries(
+    match[1]
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const idx = line.indexOf(':');
+        if (idx === -1) return [line, ''];
+        return [line.slice(0, idx).trim(), line.slice(idx + 1).trim()];
+      }),
+  );
+}
+
+function createDefaultAgentConfig(name: AgentName): AgentConfig {
+  const frontmatter = readAgentFrontmatter(name);
+  return AgentConfigSchema.parse({
+    model: frontmatter.model,
+  });
+}
+
+export function createDefaultAgentConfigs(): Record<AgentName, AgentConfig> {
+  return Object.fromEntries(
+    AGENT_NAMES.map((name) => [name, createDefaultAgentConfig(name)]),
+  ) as Record<AgentName, AgentConfig>;
+}
+
 export function createUserOpencodeConfigTemplate(): Partial<Config> {
   return {
-    agents: {},
+    agents: createDefaultAgentConfigs(),
     background: {},
     mcps: {},
     sqlite: {},
@@ -204,18 +245,34 @@ export function createUserOpencodeConfigTemplate(): Partial<Config> {
 
 export function writeUserOpencodeConfig(projectRoot = process.cwd()) {
   const { userOpencodeConfigDir, userOpencodeConfig } = getConfigDirs(projectRoot);
+  const template = createUserOpencodeConfigTemplate();
 
   if (!existsSync(userOpencodeConfigDir)) {
     mkdirSync(userOpencodeConfigDir, { recursive: true });
   }
 
   if (existsSync(userOpencodeConfig)) {
-    return { path: userOpencodeConfig, written: false };
+    const existing = readConfigFileIfExists(userOpencodeConfig);
+    const merged = mergeConfigLayers(template, existing);
+    const before = JSON.stringify(existing);
+    const after = JSON.stringify(merged);
+
+    if (before === after) {
+      return { path: userOpencodeConfig, written: false };
+    }
+
+    writeFileSync(
+      userOpencodeConfig,
+      `${JSON.stringify(merged, null, 2)}\n`,
+      'utf-8',
+    );
+
+    return { path: userOpencodeConfig, written: true };
   }
 
   writeFileSync(
     userOpencodeConfig,
-    `${JSON.stringify(createUserOpencodeConfigTemplate(), null, 2)}\n`,
+    `${JSON.stringify(template, null, 2)}\n`,
     'utf-8',
   );
 

@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { loadConfig, getConfigPaths, ConfigSchema } from './config';
-import { writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
+import {
+  loadConfig,
+  getConfigPaths,
+  ConfigSchema,
+  createDefaultAgentConfigs,
+  createUserOpencodeConfigTemplate,
+  writeUserOpencodeConfig,
+} from './config';
+import { writeFileSync, readFileSync, rmSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
 describe('Config System', () => {
@@ -96,6 +103,44 @@ describe('Config System', () => {
 
       expect(paths.userOpencodeConfigDir).toContain('.config/opencode');
       expect(paths.userOpencodeConfig).toContain('.config/opencode/monkey-code.json');
+    });
+
+    it('should generate user config template from bundled agent defaults', () => {
+      const template = createUserOpencodeConfigTemplate();
+
+      expect(template.agents?.punch?.model).toBe('github-copilot/gpt-5.4');
+      expect(template.agents?.caesar?.model).toBe('github-copilot/gpt-5.4');
+      expect(template.agents?.harambe?.model).toBe('github-copilot/gemini-3-flash-preview');
+      expect(template.agents?.tasker?.model).toBe('github-copilot/gemini-3-flash-preview');
+    });
+
+    it('should expose default agent config map from agent files', () => {
+      const defaults = createDefaultAgentConfigs();
+
+      expect(defaults.punch.model).toBe('github-copilot/gpt-5.4');
+      expect(defaults.george.model).toBe('github-copilot/gemini-3-flash-preview');
+      expect(defaults.builder.model).toBe('github-copilot/gemini-3-flash-preview');
+    });
+
+    it('should backfill missing agent defaults into existing user config', () => {
+      const { userOpencodeConfigDir, userOpencodeConfig } = getConfigPaths();
+      mkdirSync(userOpencodeConfigDir, { recursive: true });
+      writeFileSync(
+        userOpencodeConfig,
+        JSON.stringify({ background: { maxConcurrent: 11 }, agents: { punch: { temperature: 0.9 } } }),
+      );
+
+      const result = writeUserOpencodeConfig();
+      const written = JSON.parse(readFileSync(userOpencodeConfig, 'utf-8')) as {
+        background?: { maxConcurrent?: number };
+        agents?: { punch?: { temperature?: number; model?: string }; harambe?: { model?: string } };
+      };
+
+      expect(result.written).toBe(true);
+      expect(written.background?.maxConcurrent).toBe(11);
+      expect(written.agents?.punch?.temperature).toBe(0.9);
+      expect(written.agents?.punch?.model).toBe('github-copilot/gpt-5.4');
+      expect(written.agents?.harambe?.model).toBe('github-copilot/gemini-3-flash-preview');
     });
 
     it('should merge project config with defaults', () => {
