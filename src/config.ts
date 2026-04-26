@@ -4,6 +4,7 @@ import { join } from 'path';
 
 const AGENT_NAMES = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder'] as const;
 const CONFIG_SCHEMA_URL = 'https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json';
+const DEFAULT_THINKING_BUDGET_TOKENS = 32000;
 
 const ThinkingConfigSchema = z.object({
   type: z.enum(['enabled', 'disabled']),
@@ -98,6 +99,30 @@ export type McpsConfig = z.infer<typeof McpsSchema>;
 export type SqliteConfig = z.infer<typeof SqliteConfigSchema>;
 export type TmuxConfig = z.infer<typeof TmuxConfigSchema>;
 type AgentName = typeof AGENT_NAMES[number];
+
+const DEFAULT_AGENT_REASONING_CONFIGS: Record<AgentName, Pick<AgentConfig, 'reasoningEffort' | 'thinking'>> = {
+  punch: {
+    reasoningEffort: 'medium',
+  },
+  harambe: {
+    thinking: { type: 'enabled', budgetTokens: DEFAULT_THINKING_BUDGET_TOKENS },
+  },
+  caesar: {
+    reasoningEffort: 'high',
+  },
+  george: {
+    thinking: { type: 'enabled', budgetTokens: DEFAULT_THINKING_BUDGET_TOKENS },
+  },
+  tasker: {
+    thinking: { type: 'enabled', budgetTokens: DEFAULT_THINKING_BUDGET_TOKENS },
+  },
+  scout: {
+    thinking: { type: 'enabled', budgetTokens: DEFAULT_THINKING_BUDGET_TOKENS },
+  },
+  builder: {
+    thinking: { type: 'enabled', budgetTokens: DEFAULT_THINKING_BUDGET_TOKENS },
+  },
+};
 
 const DEFAULT_CONFIG: Config = {
   agents: {},
@@ -226,6 +251,7 @@ function createDefaultAgentConfig(name: AgentName): AgentConfig {
   const frontmatter = readAgentFrontmatter(name);
   return AgentConfigSchema.parse({
     model: frontmatter.model,
+    ...DEFAULT_AGENT_REASONING_CONFIGS[name],
   });
 }
 

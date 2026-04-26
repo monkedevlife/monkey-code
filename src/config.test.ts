@@ -110,9 +110,13 @@ describe('Config System', () => {
 
       expect(template.$schema).toBe('https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json');
       expect(template.agents?.punch?.model).toBe('github-copilot/gpt-5.4');
+      expect(template.agents?.punch?.reasoningEffort).toBe('medium');
       expect(template.agents?.caesar?.model).toBe('github-copilot/gpt-5.4');
+      expect(template.agents?.caesar?.reasoningEffort).toBe('high');
       expect(template.agents?.harambe?.model).toBe('github-copilot/gemini-3-flash-preview');
+      expect(template.agents?.harambe?.thinking).toEqual({ type: 'enabled', budgetTokens: 32000 });
       expect(template.agents?.tasker?.model).toBe('github-copilot/gemini-3-flash-preview');
+      expect(template.agents?.tasker?.thinking).toEqual({ type: 'enabled', budgetTokens: 32000 });
       expect(template.mcps?.chromeDevTools?.executable).toBe('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
     });
 
@@ -120,8 +124,12 @@ describe('Config System', () => {
       const defaults = createDefaultAgentConfigs();
 
       expect(defaults.punch.model).toBe('github-copilot/gpt-5.4');
+      expect(defaults.punch.reasoningEffort).toBe('medium');
+      expect(defaults.caesar.reasoningEffort).toBe('high');
       expect(defaults.george.model).toBe('github-copilot/gemini-3-flash-preview');
+      expect(defaults.george.thinking).toEqual({ type: 'enabled', budgetTokens: 32000 });
       expect(defaults.builder.model).toBe('github-copilot/gemini-3-flash-preview');
+      expect(defaults.builder.thinking).toEqual({ type: 'enabled', budgetTokens: 32000 });
     });
 
     it('should backfill missing agent defaults into existing user config', () => {
@@ -142,11 +150,13 @@ describe('Config System', () => {
       expect(result.written).toBe(true);
       expect(written.$schema).toBe('https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json');
       expect(written.background?.maxConcurrent).toBe(11);
-      expect(written.mcps?.chromeDevTools?.executable).toBe('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
-      expect(written.agents?.punch?.temperature).toBe(0.9);
-      expect(written.agents?.punch?.model).toBe('github-copilot/gpt-5.4');
-      expect(written.agents?.harambe?.model).toBe('github-copilot/gemini-3-flash-preview');
-    });
+        expect(written.mcps?.chromeDevTools?.executable).toBe('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+        expect(written.agents?.punch?.temperature).toBe(0.9);
+        expect(written.agents?.punch?.model).toBe('github-copilot/gpt-5.4');
+        expect(written.agents?.punch?.reasoningEffort).toBe('medium');
+        expect(written.agents?.harambe?.model).toBe('github-copilot/gemini-3-flash-preview');
+        expect(written.agents?.harambe?.thinking).toEqual({ type: 'enabled', budgetTokens: 32000 });
+      });
 
     it('should merge project config with defaults', () => {
       mkdirSync('.opencode', { recursive: true });
