@@ -160,6 +160,138 @@ describe('Monkey Code Plugin', () => {
       const result = await plugin.hooks.onTool?.(toolContext);
       expect(result).toBeDefined();
     });
+
+    it('delegate-task auto-routes exploratory requests to scout', async () => {
+      const plugin = createPlugin();
+      const mockContext: PluginContext = {
+        projectRoot: '/test/project',
+        configPath: '.opencode/monkey-code.json',
+        sessionId: 'test-session'
+      };
+
+      await plugin.hooks.onConfig?.(mockContext);
+
+      const toolContext: ToolContext = {
+        toolName: 'delegate-task',
+        params: {
+          task: 'Search the repository for background manager patterns',
+          agent: 'punch'
+        }
+      };
+
+      const result = await plugin.hooks.onTool?.(toolContext) as Record<string, unknown>;
+
+      expect(result).toBeDefined();
+      expect(result.agent).toBe('scout');
+      expect(result.requestedAgent).toBe('punch');
+      expect((result.routing as Record<string, unknown>).finalAgent).toBe('scout');
+    });
+
+    it('handles plan-write and plan-read roundtrip', async () => {
+      const plugin = createPlugin();
+      const mockContext: PluginContext = {
+        projectRoot: '/test/project',
+        configPath: '.opencode/monkey-code.json',
+        sessionId: 'test-session'
+      };
+
+      await plugin.hooks.onConfig?.(mockContext);
+
+      const writeResult = await plugin.hooks.onTool?.({
+        toolName: 'plan-write',
+        params: {
+          agent: 'caesar',
+          title: 'Stored Plan',
+          sourceRequest: 'make a plan',
+          markdown: '# Stored Plan'
+        }
+      }) as Record<string, unknown>;
+
+      expect(writeResult.plan).toBeDefined();
+
+      const readResult = await plugin.hooks.onTool?.({
+        toolName: 'plan-read',
+        params: {
+          id: (writeResult.plan as Record<string, unknown>).id,
+        }
+      }) as Record<string, unknown>;
+
+      expect((readResult.plan as Record<string, unknown>).title).toBe('Stored Plan');
+    });
+
+    it('handles plan-update-task', async () => {
+      const plugin = createPlugin();
+      const mockContext: PluginContext = {
+        projectRoot: '/test/project',
+        configPath: '.opencode/monkey-code.json',
+        sessionId: 'test-session'
+      };
+
+      await plugin.hooks.onConfig?.(mockContext);
+
+      const writeResult = await plugin.hooks.onTool?.({
+        toolName: 'plan-write',
+        params: {
+          projectPath: process.cwd(),
+          agent: 'caesar',
+          title: 'Tracked Plan',
+          sourceRequest: 'track task',
+          markdown: '# Tracked Plan',
+          tasks: [{ taskNumber: '1', title: 'Tracked task' }]
+        }
+      }) as Record<string, unknown>;
+
+      const plan = writeResult.plan as Record<string, unknown>;
+      const tasks = writeResult.tasks as Array<Record<string, unknown>>;
+
+      const updated = await plugin.hooks.onTool?.({
+        toolName: 'plan-update-task',
+        params: {
+          planId: plan.id,
+          taskId: tasks[0]?.id,
+          status: 'completed',
+          eventType: 'plan.task.completed'
+        }
+      }) as Record<string, unknown>;
+
+      expect(updated.status).toBe('completed');
+    });
+  });
+
+  describe('Chat Hook - start-work', () => {
+    it('hydrates /start-work with the stored plan prompt', async () => {
+      const plugin = createPlugin();
+      const mockContext: PluginContext = {
+        projectRoot: '/test/project',
+        configPath: '.opencode/monkey-code.json',
+        sessionId: 'test-session'
+      };
+
+      await plugin.hooks.onConfig?.(mockContext);
+
+      await plugin.hooks.onTool?.({
+        toolName: 'plan-write',
+        params: {
+          projectPath: process.cwd(),
+          agent: 'caesar',
+          title: 'Start Work Plan',
+          sourceRequest: 'plan this',
+          markdown: '# Start Work Plan',
+          tasks: [{ taskNumber: '1', title: 'Do the thing' }]
+        }
+      });
+
+      const output = {
+        parts: [{ type: 'text', text: '/start-work "Start Work Plan"' }],
+        message: {} as Record<string, unknown>
+      };
+
+      await plugin.hooks.onChatMessage?.({ sessionID: 'test-session' }, output);
+
+      expect(output.parts[0]?.text).toContain('You are starting work from the stored plan');
+      expect(output.parts[0]?.text).toContain('Start Work Plan');
+      expect(output.parts[0]?.text).toContain('Do the thing');
+    });
   });
 
   describe('Tool Hook - background-output', () => {
@@ -483,6 +615,27 @@ describe('Monkey Code Plugin', () => {
         await plugin.hooks.onEvent?.(event);
       }).not.toThrow();
     });
+
+    it('handles session:idle event', async () => {
+      const plugin = createPlugin();
+      const mockContext: PluginContext = {
+        projectRoot: '/test/project',
+        configPath: '.opencode/monkey-code.json',
+        sessionId: 'test-session'
+      };
+
+      await plugin.hooks.onConfig?.(mockContext);
+
+      const event: PluginEvent = {
+        type: 'session:idle',
+        timestamp: Date.now(),
+        data: { sessionId: 'test-session' }
+      };
+
+      expect(async () => {
+        await plugin.hooks.onEvent?.(event);
+      }).not.toThrow();
+    });
   });
 
   describe('Event Hook - Null Data Handling', () => {
@@ -587,7 +740,7 @@ describe('Monkey Code Plugin', () => {
   });
 
   describe('Integration - Tool Registration', () => {
-    it('registers all 5 tools', async () => {
+    it('registers all plugin tools', async () => {
       const plugin = createPlugin();
       const mockContext: PluginContext = {
         projectRoot: '/test/project',
@@ -605,8 +758,24 @@ describe('Monkey Code Plugin', () => {
       expect(delegateResult).toBeDefined();
       expect(delegateResult.taskId).toBeDefined();
 
+      const planResult = await plugin.hooks.onTool?.({
+        toolName: 'plan-write',
+        params: {
+          projectPath: process.cwd(),
+          agent: 'caesar',
+          title: 'Registration Plan',
+          sourceRequest: 'register tools',
+          markdown: '# Registration Plan',
+          tasks: [{ taskNumber: '1', title: 'Registered task' }]
+        }
+      }) as { plan: { id: string }; tasks: Array<{ id: string }> };
+
       const tools = [
         { name: 'delegate-task', params: { task: 'test' } },
+        { name: 'plan-write', params: { agent: 'caesar', title: 'T', sourceRequest: 'R', markdown: '# T' } },
+        { name: 'plan-read', params: { projectPath: process.cwd() } },
+        { name: 'plan-list', params: { projectPath: process.cwd() } },
+        { name: 'plan-update-task', params: { planId: planResult.plan.id, taskId: planResult.tasks[0]?.id, status: 'completed' } },
         { name: 'background-output', params: { taskId: delegateResult.taskId } },
         { name: 'background-cancel', params: { taskId: delegateResult.taskId } },
         { name: 'interactive-bash', params: { command: 'bash', action: 'start' } },

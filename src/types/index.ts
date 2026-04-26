@@ -16,6 +16,8 @@ export interface BackgroundTask extends Task {
   context?: string;
   timeout?: number;
   parentSessionId?: string;
+  planId?: string;
+  planTaskId?: string;
   result?: unknown;
 }
 
@@ -59,10 +61,11 @@ export interface HookHandlers {
   onTool?: (context: ToolContext) => unknown | Promise<unknown>;
   onEvent?: (event: PluginEvent) => void | Promise<void>;
   onChatParams?: (input: unknown, output: unknown) => void | Promise<void>;
+  onChatMessage?: (input: unknown, output: unknown) => void | Promise<void>;
 }
 
 // Plugin Event Types
-export type PluginEventType = 'session:start' | 'session:end' | 'task:complete' | 'task:failed';
+export type PluginEventType = 'session:start' | 'session:end' | 'task:complete' | 'task:failed' | 'session:idle';
 
 export interface PluginEvent {
   type: PluginEventType;

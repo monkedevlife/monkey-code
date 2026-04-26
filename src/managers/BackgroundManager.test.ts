@@ -43,6 +43,8 @@ describe("BackgroundManager", () => {
         agentName: "test-agent",
         context: "test-context",
         parentSessionId: "session-123",
+        planId: "plan-123",
+        planTaskId: "plan-task-123",
       };
 
       const taskId = await manager.launch(input);
@@ -50,6 +52,11 @@ describe("BackgroundManager", () => {
 
       expect(status).not.toBeNull();
       expect(status?.command).toBe("node -e console.log(1)");
+      expect((status as any)?.agentName).toBe("test-agent");
+      expect((status as any)?.context).toBe("test-context");
+      expect((status as any)?.parentSessionId).toBe("session-123");
+      expect((status as any)?.planId).toBe("plan-123");
+      expect((status as any)?.planTaskId).toBe("plan-task-123");
     });
 
     it("should start tasks immediately when under concurrency limit", async () => {
@@ -215,6 +222,64 @@ describe("BackgroundManager", () => {
   });
 
   describe("task lifecycle", () => {
+    it("should sync linked plan task status on completion", async () => {
+      const plan = await sqlite.savePlan({
+        project_path: "/tmp/linked-plan",
+        agent_name: "caesar",
+        title: "Linked Plan",
+        source_request: "run linked work",
+        plan_markdown: "# Linked Plan",
+      });
+      const [planTask] = await sqlite.replacePlanTasks(plan.id, [
+        { task_number: "1", title: "Complete linked work" },
+      ]);
+
+      const taskId = await manager.launch({
+        command: "node -e 'console.log(1)'",
+        planId: plan.id,
+        planTaskId: planTask?.id,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const [updatedPlanTask] = await sqlite.getPlanTasks(plan.id);
+
+      expect((await manager.getStatus(taskId))?.status).toBe("completed");
+      expect(updatedPlanTask?.status).toBe("completed");
+
+      const events = await sqlite.getPlanEvents(plan.id);
+      expect(events.some((event) => event.event_type === "plan.task.started")).toBe(true);
+      expect(events.some((event) => event.event_type === "plan.task.completed")).toBe(true);
+    });
+
+    it("should sync linked plan task status on cancellation", async () => {
+      const plan = await sqlite.savePlan({
+        project_path: "/tmp/cancel-plan",
+        agent_name: "caesar",
+        title: "Cancel Plan",
+        source_request: "cancel linked work",
+        plan_markdown: "# Cancel Plan",
+      });
+      const [planTask] = await sqlite.replacePlanTasks(plan.id, [
+        { task_number: "1", title: "Cancel linked work" },
+      ]);
+
+      const taskId = await manager.launch({
+        command: "sleep 10",
+        planId: plan.id,
+        planTaskId: planTask?.id,
+      });
+
+      await manager.cancel(taskId);
+
+      const [updatedPlanTask] = await sqlite.getPlanTasks(plan.id);
+      expect((await manager.getStatus(taskId))?.status).toBe("failed");
+      expect(updatedPlanTask?.status).toBe("cancelled");
+
+      const events = await sqlite.getPlanEvents(plan.id);
+      expect(events.some((event) => event.event_type === "plan.task.cancelled")).toBe(true);
+    });
+
     it("should transition pending → running → completed", async () => {
       const input: LaunchTaskInput = {
         command: "node -e 'console.log(1)'",

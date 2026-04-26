@@ -1,5 +1,6 @@
 import { SQLiteClient } from "../utils/sqlite-client";
 import { BackgroundTask, Task, IBackgroundManager } from "../types";
+import { updatePlanTaskState } from "../tools/plan-store";
 
 export interface TaskFilter {
   status?: Task["status"];
@@ -13,10 +14,20 @@ export interface LaunchTaskInput {
   context?: string;
   timeout?: number;
   parentSessionId?: string;
+  planId?: string;
+  planTaskId?: string;
+}
+
+export interface BackgroundTaskStatus extends Task {
+  agentName?: string;
+  context?: string;
+  parentSessionId?: string;
+  planId?: string;
+  planTaskId?: string;
 }
 
 export interface NotificationCallback {
-  (taskId: string, status: Task["status"], output?: string, error?: string): void;
+  (taskId: string, status: Task["status"], output?: string, error?: string): void | Promise<void>;
 }
 
 export interface BackgroundManagerConfig {
@@ -87,6 +98,19 @@ export class BackgroundManager implements IBackgroundManager {
     const task = await this.sqlite.getTask(taskId);
     if (!task || task.status !== "pending") return;
     await this.sqlite.updateTaskStatus(taskId, "in_progress");
+    if (task.plan_id && task.plan_task_id) {
+      await updatePlanTaskState(this.sqlite, {
+        planId: task.plan_id,
+        taskId: task.plan_task_id,
+        status: "in_progress",
+        eventType: "plan.task.started",
+        eventPayload: {
+          backgroundTaskId: taskId,
+          parentSessionId: task.parent_session_id,
+          agentName: task.agent_name,
+        },
+      });
+    }
     const abortController = new AbortController();
     this.runningTasks.set(taskId, abortController);
     const taskPromise = this.executeTask(taskId, task.command, abortController.signal)
@@ -134,9 +158,27 @@ export class BackgroundManager implements IBackgroundManager {
     const outputText = error ? `${output}\nERROR: ${error}`.trim() : output;
     const dbStatus = status === "cancelled" ? "failed" : status;
     await this.sqlite.updateTaskStatus(taskId, dbStatus as "pending" | "in_progress" | "completed" | "failed", outputText, completedAt);
+    const task = await this.sqlite.getTask(taskId);
+    if (task?.plan_id && task.plan_task_id) {
+      const planTaskStatus = status === "completed" ? "completed" : status === "cancelled" ? "cancelled" : status === "failed" ? "blocked" : undefined;
+      if (planTaskStatus) {
+        await updatePlanTaskState(this.sqlite, {
+          planId: task.plan_id,
+          taskId: task.plan_task_id,
+          status: planTaskStatus,
+          notes: outputText || undefined,
+          eventType: `plan.task.${status}`,
+          eventPayload: {
+            backgroundTaskId: taskId,
+            parentSessionId: task.parent_session_id,
+            agentName: task.agent_name,
+          },
+        });
+      }
+    }
     const callback = this.notificationCallbacks.get(taskId);
     if (callback) {
-      callback(taskId, status, output, error);
+      await Promise.resolve(callback(taskId, status, output, error));
       this.notificationCallbacks.delete(taskId);
     }
     this.processPendingTasks();
@@ -155,7 +197,18 @@ export class BackgroundManager implements IBackgroundManager {
       timeout: taskInput.timeout,
       parentSessionId: taskInput.parentSessionId,
     };
-    await this.sqlite.storeTask({ id: task.id, status: task.status, command: task.command, output: "", created_at: task.createdAt });
+    await this.sqlite.storeTask({
+      id: task.id,
+      status: task.status,
+      command: task.command,
+      output: "",
+      created_at: task.createdAt,
+      agent_name: taskInput.agentName,
+      parent_session_id: taskInput.parentSessionId,
+      context: taskInput.context,
+      plan_id: taskInput.planId,
+      plan_task_id: taskInput.planTaskId,
+    });
     if (taskInput.parentSessionId) {
       this.notificationCallbacks.set(taskId, (id, status) => {
         console.log(`[BackgroundManager] Task ${id} completed with status: ${status}`);
@@ -175,6 +228,20 @@ export class BackgroundManager implements IBackgroundManager {
     }
     if (task.status === "pending") {
       await this.sqlite.updateTaskStatus(taskId, "failed", "Task was cancelled before execution", Date.now());
+      if (task.plan_id && task.plan_task_id) {
+        await updatePlanTaskState(this.sqlite, {
+          planId: task.plan_id,
+          taskId: task.plan_task_id,
+          status: "cancelled",
+          notes: "Task was cancelled before execution",
+          eventType: "plan.task.cancelled",
+          eventPayload: {
+            backgroundTaskId: taskId,
+            parentSessionId: task.parent_session_id,
+            agentName: task.agent_name,
+          },
+        });
+      }
       return;
     }
     const abortController = this.runningTasks.get(taskId);
@@ -198,7 +265,12 @@ export class BackgroundManager implements IBackgroundManager {
       output: task.output,
       createdAt: task.created_at,
       completedAt: task.completed_at,
-    };
+      agentName: task.agent_name,
+      context: task.context,
+      parentSessionId: task.parent_session_id,
+      planId: task.plan_id,
+      planTaskId: task.plan_task_id,
+    } as BackgroundTaskStatus;
   }
 
   async getOutput(taskId: string): Promise<string | null> {
@@ -208,24 +280,48 @@ export class BackgroundManager implements IBackgroundManager {
   }
 
   async listTasks(filter?: TaskFilter): Promise<Task[]> {
-    let tasks: Task[] = [];
+    let tasks: BackgroundTaskStatus[] = [];
     if (filter?.status) {
       const dbStatus = filter.status;
       const dbTasks = await this.sqlite.getTasksByStatus(dbStatus as "pending" | "in_progress" | "completed" | "failed");
       tasks = dbTasks.map((t) => {
-        return { id: t.id, status: t.status as Task["status"], command: t.command, output: t.output, createdAt: t.created_at, completedAt: t.completed_at };
+        return {
+          id: t.id,
+          status: t.status as Task["status"],
+          command: t.command,
+          output: t.output,
+          createdAt: t.created_at,
+          completedAt: t.completed_at,
+          agentName: t.agent_name,
+          context: t.context,
+          parentSessionId: t.parent_session_id,
+          planId: t.plan_id,
+          planTaskId: t.plan_task_id,
+        };
       });
     } else {
       const dbStatuses = ["pending", "in_progress", "completed", "failed"] as const;
       for (const dbStatus of dbStatuses) {
         const dbTasks = await this.sqlite.getTasksByStatus(dbStatus);
         tasks.push(...dbTasks.map((t) => {
-          return { id: t.id, status: t.status as Task["status"], command: t.command, output: t.output, createdAt: t.created_at, completedAt: t.completed_at };
+          return {
+            id: t.id,
+            status: t.status as Task["status"],
+            command: t.command,
+            output: t.output,
+            createdAt: t.created_at,
+            completedAt: t.completed_at,
+            agentName: t.agent_name,
+            context: t.context,
+            parentSessionId: t.parent_session_id,
+            planId: t.plan_id,
+            planTaskId: t.plan_task_id,
+          };
         }));
       }
     }
     if (filter?.parentSessionId) {
-      tasks = tasks.filter((t) => (t as BackgroundTask).parentSessionId === filter.parentSessionId);
+      tasks = tasks.filter((t) => t.parentSessionId === filter.parentSessionId);
     }
     return tasks.sort((a, b) => b.createdAt - a.createdAt);
   }

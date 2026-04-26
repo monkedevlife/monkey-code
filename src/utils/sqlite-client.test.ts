@@ -110,6 +110,26 @@ describe("SQLiteClient", () => {
       expect(retrieved?.output).toBe("done");
     });
 
+    it("should persist task plan linkage metadata", async () => {
+      await client.storeTask({
+        id: "task-plan-linked",
+        status: "pending",
+        command: "echo linked",
+        plan_id: "plan-123",
+        plan_task_id: "plan-task-456",
+        agent_name: "punch",
+        parent_session_id: "session-789",
+        context: "linked context",
+      });
+
+      const retrieved = await client.getTask("task-plan-linked");
+      expect(retrieved?.plan_id).toBe("plan-123");
+      expect(retrieved?.plan_task_id).toBe("plan-task-456");
+      expect(retrieved?.agent_name).toBe("punch");
+      expect(retrieved?.parent_session_id).toBe("session-789");
+      expect(retrieved?.context).toBe("linked context");
+    });
+
     it("should use current timestamp when created_at not provided", async () => {
       const before = Date.now();
       await client.storeTask({
@@ -435,6 +455,187 @@ describe("SQLiteClient", () => {
     it("should allow multiple close calls", async () => {
       await client.close();
       await client.close();
+    });
+  });
+
+  describe("plans", () => {
+    it("should save and fetch a plan by id", async () => {
+      const saved = await client.savePlan({
+        project_path: "/tmp/plan-project",
+        agent_name: "caesar",
+        title: "Data Model Plan",
+        source_request: "design the model",
+        plan_markdown: "# Data Model Plan",
+      });
+
+      const fetched = await client.getPlanById(saved.id);
+      expect(fetched?.title).toBe("Data Model Plan");
+      expect(fetched?.slug).toBe("data-model-plan");
+    });
+
+    it("should list latest plans first", async () => {
+      await client.savePlan({
+        project_path: "/tmp/plan-order",
+        agent_name: "caesar",
+        title: "Older Plan",
+        source_request: "old",
+        plan_markdown: "# old",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 2));
+
+      await client.savePlan({
+        project_path: "/tmp/plan-order",
+        agent_name: "caesar",
+        title: "Newer Plan",
+        source_request: "new",
+        plan_markdown: "# new",
+      });
+
+      const plans = await client.listPlans({ project_path: "/tmp/plan-order" });
+      expect(plans[0]?.title).toBe("Newer Plan");
+      expect(plans[1]?.title).toBe("Older Plan");
+    });
+
+    it("should replace and update plan tasks", async () => {
+      const saved = await client.savePlan({
+        project_path: "/tmp/plan-tasks",
+        agent_name: "caesar",
+        title: "Task Plan",
+        source_request: "task plan",
+        plan_markdown: "# task plan",
+      });
+
+      const tasks = await client.replacePlanTasks(saved.id, [
+        {
+          task_number: "1",
+          title: "First task",
+          depends_on: ["0"],
+          skills: ["grep_app"],
+          acceptance_criteria: ["done"],
+        },
+      ]);
+
+      expect(tasks.length).toBe(1);
+      expect(tasks[0]?.task_number).toBe("1");
+
+      const updated = await client.updatePlanTask({
+        plan_id: saved.id,
+        task_number: "1",
+        status: "completed",
+      });
+
+      expect(updated?.status).toBe("completed");
+    });
+
+    it("should append plan events", async () => {
+      const saved = await client.savePlan({
+        project_path: "/tmp/plan-events",
+        agent_name: "caesar",
+        title: "Event Plan",
+        source_request: "events",
+        plan_markdown: "# events",
+      });
+
+      await client.appendPlanEvent(saved.id, "plan.started", { agent: "punch" });
+      const events = await client.getPlanEvents(saved.id);
+
+      expect(events.length).toBe(1);
+      expect(events[0]?.event_type).toBe("plan.started");
+    });
+
+    it("should select the next runnable plan task based on dependencies", async () => {
+      const saved = await client.savePlan({
+        project_path: "/tmp/plan-next-task",
+        session_id: "session-next",
+        agent_name: "caesar",
+        title: "Runnable Plan",
+        status: "active",
+        source_request: "run tasks",
+        plan_markdown: "# Runnable Plan",
+      });
+
+      await client.replacePlanTasks(saved.id, [
+        { task_number: "1", title: "First task", status: "completed" },
+        { task_number: "2", title: "Second task", depends_on: ["1"] },
+        { task_number: "3", title: "Third task", depends_on: ["2"] },
+      ]);
+
+      const next = await client.getNextRunnablePlanTask("/tmp/plan-next-task", "session-next");
+      expect(next?.task.task_number).toBe("2");
+    });
+
+    it("should not select another runnable task when the active plan already has in-progress work", async () => {
+      const saved = await client.savePlan({
+        project_path: "/tmp/plan-single-active",
+        session_id: "session-single",
+        agent_name: "caesar",
+        title: "Single Active Plan",
+        status: "active",
+        source_request: "single active",
+        plan_markdown: "# Single Active Plan",
+      });
+
+      await client.replacePlanTasks(saved.id, [
+        { task_number: "1", title: "First task", status: "in_progress" },
+        { task_number: "2", title: "Second task" },
+      ]);
+
+      const next = await client.getNextRunnablePlanTask("/tmp/plan-single-active", "session-single");
+      expect(next).toBeNull();
+    });
+
+    it("should only consider the newest active plan for scheduling", async () => {
+      await client.savePlan({
+        project_path: "/tmp/plan-priority",
+        session_id: "session-priority",
+        agent_name: "caesar",
+        title: "Older Active Plan",
+        status: "active",
+        source_request: "older",
+        plan_markdown: "# Older",
+      }).then(async (plan) => {
+        await client.replacePlanTasks(plan.id, [{ task_number: "1", title: "Older task" }]);
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 2));
+
+      const newerPlan = await client.savePlan({
+        project_path: "/tmp/plan-priority",
+        session_id: "session-priority",
+        agent_name: "caesar",
+        title: "Newer Active Plan",
+        status: "active",
+        source_request: "newer",
+        plan_markdown: "# Newer",
+      });
+      await client.replacePlanTasks(newerPlan.id, [{ task_number: "1", title: "Newer task" }]);
+
+      const next = await client.getNextRunnablePlanTask("/tmp/plan-priority", "session-priority");
+      expect(next?.plan.title).toBe("Newer Active Plan");
+      expect(next?.task.title).toBe("Newer task");
+    });
+
+    it("should finalize a plan when all tasks are terminal", async () => {
+      const saved = await client.savePlan({
+        project_path: "/tmp/plan-finalize",
+        agent_name: "caesar",
+        title: "Finalize Plan",
+        status: "active",
+        source_request: "finalize",
+        plan_markdown: "# Finalize Plan",
+      });
+
+      await client.replacePlanTasks(saved.id, [
+        { task_number: "1", title: "Done", status: "completed" },
+        { task_number: "2", title: "Cancelled", status: "cancelled" },
+      ]);
+
+      const finalized = await client.finalizePlanStatus(saved.id);
+      expect(finalized?.status).toBe("completed");
+
+      const events = await client.getPlanEvents(saved.id);
+      expect(events.some((event) => event.event_type === "plan.completed")).toBe(true);
     });
   });
 });

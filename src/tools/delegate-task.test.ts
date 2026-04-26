@@ -8,6 +8,7 @@ import {
   type OpenCodeClient,
 } from "./delegate-task.js";
 import type { BackgroundManager } from "../managers/BackgroundManager.js";
+import { getSessionPromptParams, clearSessionPromptParams } from "../utils/session-prompt-params.js";
 
 function createMockClient(): OpenCodeClient {
   return {
@@ -80,6 +81,56 @@ describe("delegate-task", () => {
       expect(ctx.client.session.prompt).toHaveBeenCalled();
     });
 
+    it("should auto-route exploratory tasks to scout", async () => {
+      const input: DelegateTaskInput = {
+        task: "Search the codebase for authentication patterns and relevant files",
+        agent: "punch",
+      };
+
+      const result = await delegateTask(input, ctx);
+
+      expect(result.agent).toBe("scout");
+      expect(result.requestedAgent).toBe("punch");
+      expect(result.summary).toContain("auto-routed");
+      expect(result.routing?.originalAgent).toBe("punch");
+      expect(result.routing?.finalAgent).toBe("scout");
+
+      const promptCall = (ctx.client.session.prompt as ReturnType<typeof mock>).mock.calls[0];
+      expect(promptCall[0].agent).toBe("scout");
+      expect(promptCall[0].system).toContain("grep_app");
+      expect(promptCall[0].system).toContain("compact findings");
+
+      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof mock>).mock.calls[0];
+      expect(launchCall[0].agentName).toBe("scout");
+      expect(launchCall[0].command).toContain("--agent 'scout'");
+    });
+
+    it("should keep scout when exploratory task already targets scout", async () => {
+      const input: DelegateTaskInput = {
+        task: "Find patterns for session handling across the repo",
+        agent: "scout",
+      };
+
+      const result = await delegateTask(input, ctx);
+
+      expect(result.agent).toBe("scout");
+      expect(result.requestedAgent).toBeUndefined();
+      expect(result.routing).toBeUndefined();
+    });
+
+    it("should not auto-route non-exploratory execution tasks", async () => {
+      const input: DelegateTaskInput = {
+        task: "Implement the session cleanup helper",
+        agent: "builder",
+      };
+
+      const result = await delegateTask(input, ctx);
+
+      expect(result.agent).toBe("builder");
+      expect(result.requestedAgent).toBeUndefined();
+      expect(result.routing).toBeUndefined();
+    });
+
     it("should use default agent when not specified", async () => {
       const input: DelegateTaskInput = {
         task: "Fix bug in login",
@@ -124,6 +175,20 @@ describe("delegate-task", () => {
       expect(ctx.backgroundManager.launch).toHaveBeenCalled();
       const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof mock>).mock.calls[0];
       expect(launchCall[0].timeout).toBe(60);
+    });
+
+    it("should pass plan linkage to background manager", async () => {
+      const input: DelegateTaskInput = {
+        task: "Run linked work",
+        planId: "plan-123",
+        planTaskId: "plan-task-456",
+      };
+
+      await delegateTask(input, ctx);
+
+      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof mock>).mock.calls[0];
+      expect(launchCall[0].planId).toBe("plan-123");
+      expect(launchCall[0].planTaskId).toBe("plan-task-456");
     });
 
     it("should set parentSessionId on child session", async () => {
@@ -206,6 +271,32 @@ describe("delegate-task", () => {
       const result = await delegateTask(input, ctx);
       expect(result.taskId).toBeDefined();
       expect(result.sessionId).toBeDefined();
+    });
+
+    it("should use routed agent config when task is auto-routed to scout", async () => {
+      ctx.agentConfig = { model: "github-copilot/gpt-5.4", temperature: 0.7 };
+      ctx.resolveAgentConfig = (agentName: string) => {
+        if (agentName === "scout") {
+          return { model: "github-copilot/gpt-5.4-mini", temperature: 0.2 };
+        }
+
+        if (agentName === "punch") {
+          return { model: "github-copilot/gpt-5.4", temperature: 0.7 };
+        }
+
+        return undefined;
+      };
+
+      const result = await delegateTask(
+        {
+          task: "Explore the repository for prompt construction patterns",
+          agent: "punch",
+        },
+        ctx,
+      );
+
+      expect(getSessionPromptParams(result.sessionId)?.temperature).toBe(0.2);
+      clearSessionPromptParams(result.sessionId);
     });
   });
 
