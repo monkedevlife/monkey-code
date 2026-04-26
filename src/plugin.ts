@@ -20,6 +20,7 @@ import { writePlan, readPlan, listPlans, type PlanWriteInput, type PlanReadInput
 import { updatePlanTaskState } from './tools/plan-store.js';
 import { createStartWorkHook } from './hooks/start-work.js';
 import { createPlanContinuationHook } from './hooks/plan-continuation.js';
+import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
 
 interface PluginState {
@@ -502,8 +503,18 @@ export function createPlugin(): MonkeyCodePlugin {
         worktree: process.cwd(),
         defaultAgent: 'punch'
       });
+      const stopAllHook = pluginState.backgroundManager
+        ? createStopAllHook({
+            backgroundManager: pluginState.backgroundManager,
+            interactiveManager: pluginState.interactiveManager,
+          })
+        : null;
 
       await startWorkHook['chat.message']?.(
+        input as { sessionID: string },
+        output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> }
+      );
+      await stopAllHook?.['chat.message']?.(
         input as { sessionID: string },
         output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> }
       );

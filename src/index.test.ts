@@ -80,4 +80,8 @@ describe('Monkey Code Plugin', () => {
       'skill-mcp': 'allow',
     });
   });
+
+  it('exports current plugin server for slash command hooks', () => {
+    expect(typeof monkeyCodePlugin.server).toBe('function');
+  });
 });

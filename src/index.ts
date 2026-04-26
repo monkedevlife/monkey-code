@@ -14,6 +14,7 @@ import { skillMcp, type SkillMcpParams, cleanupAllSkills } from './tools/skill-m
 import { writePlan, readPlan, listPlans, updatePlanTaskState, type PlanWriteInput, type PlanReadInput, type PlanListInput } from './tools/plan-store.js';
 import { createStartWorkHook } from './hooks/start-work.js';
 import { createPlanContinuationHook } from './hooks/plan-continuation.js';
+import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
 
 const agents = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder'] as const;
@@ -519,6 +520,15 @@ export const server: Plugin = async (input) => {
         resolveAgentConfig,
       })
     : null;
+  const stopAllHook = pluginState.backgroundManager
+    ? createStopAllHook({
+        backgroundManager: pluginState.backgroundManager,
+        interactiveManager: pluginState.interactiveManager,
+        abortCurrentSession: async (sessionID: string) => {
+          await input.client.session.abort({ path: { id: sessionID } });
+        },
+      })
+    : null;
 
   return {
     config: async (config: OpenCodeConfig) => {
@@ -781,6 +791,9 @@ export const server: Plugin = async (input) => {
     'chat.message': async (hookInput, output) => {
       if (startWorkHook) {
         await startWorkHook['chat.message']?.(hookInput as { sessionID: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
+      }
+      if (stopAllHook) {
+        await stopAllHook['chat.message']?.(hookInput as { sessionID: string; client?: unknown }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
     },
   };

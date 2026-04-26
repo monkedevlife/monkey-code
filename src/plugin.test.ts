@@ -292,6 +292,31 @@ describe('Monkey Code Plugin', () => {
       expect(output.parts[0]?.text).toContain('Start Work Plan');
       expect(output.parts[0]?.text).toContain('Do the thing');
     });
+
+    it('handles /stop-all by cancelling background work', async () => {
+      const plugin = createPlugin();
+      const mockContext: PluginContext = {
+        projectRoot: '/test/project',
+        configPath: '.opencode/monkey-code.json',
+        sessionId: 'test-session'
+      };
+
+      await plugin.hooks.onConfig?.(mockContext);
+
+      await plugin.hooks.onTool?.({
+        toolName: 'delegate-task',
+        params: { task: 'long running task' }
+      });
+
+      const output = {
+        parts: [{ type: 'text', text: '/stop-all' }],
+        message: {} as Record<string, unknown>
+      };
+
+      await plugin.hooks.onChatMessage?.({ sessionID: 'test-session' }, output);
+
+      expect(output.parts[0]?.text).toContain('Stopped');
+    });
   });
 
   describe('Tool Hook - background-output', () => {
