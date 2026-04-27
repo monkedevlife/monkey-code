@@ -118,6 +118,8 @@ describe('Config System', () => {
       expect(template.agents?.tasker?.model).toBe('github-copilot/gemini-3-flash-preview');
       expect(template.agents?.tasker?.thinking).toEqual({ type: 'enabled', budgetTokens: 32000 });
       expect(template.mcps?.chromeDevTools?.executable).toBe('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+      expect(template.sqlite).toBeUndefined();
+      expect(template.tmux).toBeUndefined();
     });
 
     it('should expose default agent config map from agent files', () => {

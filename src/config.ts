@@ -275,8 +275,6 @@ export function createUserOpencodeConfigTemplate(): Partial<Config> {
         executable: defaultChromeExecutable(),
       },
     },
-    sqlite: {},
-    tmux: {},
   };
 }
 
