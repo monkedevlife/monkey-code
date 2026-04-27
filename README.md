@@ -157,6 +157,34 @@ Configure individual monkeys with model and temperature settings:
 |--------|------|-------|-------------|
 | `model` | string | - | Model identifier (e.g., `openrouter/openai/gpt-4o`) |
 | `temperature` | number | 0.0 - 2.0 | Sampling temperature (0 = deterministic, 2 = very creative) |
+| `topP` | number | 0.0 - 1.0 | Nucleus sampling threshold |
+| `topK` | number | > 0 | Top-k sampling limit |
+| `maxTokens` | number | > 0 | Maximum tokens to generate |
+| `presencePenalty` | number | -2.0 - 2.0 | Penalty for repeating tokens |
+| `frequencyPenalty` | number | -2.0 - 2.0 | Penalty for frequent tokens |
+| `reasoningEffort` | string | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` | Reasoning effort level |
+| `thinking` | object | - | Thinking configuration (see below) |
+| `providerOptions` | object | - | Provider-specific extra options |
+
+**Thinking Config:**
+
+```json
+{
+  "agents": {
+    "harambe": {
+      "thinking": {
+        "type": "enabled",
+        "budgetTokens": 32000
+      }
+    }
+  }
+}
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `type` | string | `enabled` or `disabled` |
+| `budgetTokens` | number | Token budget for thinking (required when enabled) |
 
 ### Background Tasks
 
