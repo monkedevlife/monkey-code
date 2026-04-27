@@ -35,6 +35,11 @@ export interface BackgroundManagerConfig {
   pollIntervalMs?: number;
 }
 
+function isBackgroundDebugEnabled(): boolean {
+  const value = process.env.MONKEY_CODE_DEBUG_BACKGROUND?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
 export class BackgroundManager implements IBackgroundManager {
   private sqlite: SQLiteClient;
   private concurrencyLimit: number;
@@ -211,7 +216,9 @@ export class BackgroundManager implements IBackgroundManager {
     });
     if (taskInput.parentSessionId) {
       this.notificationCallbacks.set(taskId, (id, status) => {
-        console.log(`[BackgroundManager] Task ${id} completed with status: ${status}`);
+        if (isBackgroundDebugEnabled()) {
+          console.log(`[BackgroundManager] Task ${id} completed with status: ${status}`);
+        }
       });
     }
     await this.processPendingTasks();

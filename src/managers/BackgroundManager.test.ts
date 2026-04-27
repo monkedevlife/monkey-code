@@ -5,8 +5,11 @@ import { SQLiteClient } from "../utils/sqlite-client";
 describe("BackgroundManager", () => {
   let sqlite: SQLiteClient;
   let manager: BackgroundManager;
+  let originalDebugBackground: string | undefined;
 
   beforeEach(async () => {
+    originalDebugBackground = process.env.MONKEY_CODE_DEBUG_BACKGROUND;
+    delete process.env.MONKEY_CODE_DEBUG_BACKGROUND;
     sqlite = new SQLiteClient(":memory:");
     manager = new BackgroundManager(sqlite, {
       concurrencyLimit: 2,
@@ -18,6 +21,11 @@ describe("BackgroundManager", () => {
   afterEach(async () => {
     await manager.shutdown();
     await sqlite.close();
+    if (originalDebugBackground === undefined) {
+      delete process.env.MONKEY_CODE_DEBUG_BACKGROUND;
+    } else {
+      process.env.MONKEY_CODE_DEBUG_BACKGROUND = originalDebugBackground;
+    }
   });
 
   describe("launch", () => {
@@ -337,6 +345,50 @@ describe("BackgroundManager", () => {
   });
 
   describe("notifications", () => {
+    it("should not log background completion by default", async () => {
+      const originalConsoleLog = console.log;
+      const logs: string[] = [];
+      console.log = ((...args: unknown[]) => {
+        logs.push(args.map((arg) => String(arg)).join(" "));
+      }) as typeof console.log;
+
+      try {
+        await manager.launch({
+          command: "node -e 'console.log(1)'",
+          parentSessionId: "session-123",
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        expect(logs.some((entry) => entry.includes("[BackgroundManager]"))).toBe(false);
+      } finally {
+        console.log = originalConsoleLog;
+      }
+    });
+
+    it("should log background completion when debug flag is enabled", async () => {
+      process.env.MONKEY_CODE_DEBUG_BACKGROUND = "true";
+
+      const originalConsoleLog = console.log;
+      const logs: string[] = [];
+      console.log = ((...args: unknown[]) => {
+        logs.push(args.map((arg) => String(arg)).join(" "));
+      }) as typeof console.log;
+
+      try {
+        await manager.launch({
+          command: "node -e 'console.log(1)'",
+          parentSessionId: "session-123",
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        expect(logs.some((entry) => entry.includes("[BackgroundManager] Task") && entry.includes("completed"))).toBe(true);
+      } finally {
+        console.log = originalConsoleLog;
+      }
+    });
+
     it("should support task completion callback", async () => {
       let notified = false;
       let completedTaskId = "";
