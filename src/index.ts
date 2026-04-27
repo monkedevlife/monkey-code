@@ -253,6 +253,14 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
     };
   }
 
+  for (const name of ['build', 'plan'] as const) {
+    const existing =
+      agentConfig[name] && typeof agentConfig[name] === 'object' && !Array.isArray(agentConfig[name])
+        ? (agentConfig[name] as Record<string, unknown>)
+        : {};
+    agentConfig[name] = { ...existing, disable: true, hidden: true };
+  }
+
   mutableConfig.agent = agentConfig;
   mutableConfig.default_agent = 'punch';
 
