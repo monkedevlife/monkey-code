@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { resolve } from "node:path";
 import * as sqliteVss from "sqlite-vss";
 
 export interface Task {
@@ -159,6 +160,7 @@ export class SQLiteClient {
       this.createPlansTable();
       this.createPlanTasksTable();
       this.createPlanEventsTable();
+      this.createProjectsTable();
       this.initialized = true;
     } catch (error) {
       throw new SQLiteClientError(
@@ -353,6 +355,19 @@ export class SQLiteClient {
 
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_plan_events_plan_id ON plan_events(plan_id, created_at ASC)
+    `);
+  }
+
+  private createProjectsTable(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        project_path TEXT UNIQUE NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_path ON projects(project_path)
     `);
   }
 
@@ -1257,6 +1272,34 @@ export class SQLiteClient {
     }
 
     return plan;
+  }
+
+  resolveProjectId(projectPath: string): string {
+    this.ensureInitialized();
+
+    const normalized = resolve(projectPath);
+    const existing = this.db.query(
+      'SELECT id FROM projects WHERE project_path = ?'
+    ).get(normalized) as { id: string } | undefined;
+
+    if (existing) return existing.id;
+
+    const id = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    this.db.run(
+      'INSERT INTO projects (id, project_path, created_at) VALUES (?, ?, ?)',
+      [id, normalized, Date.now()]
+    );
+    return id;
+  }
+
+  getProjectId(projectPath: string): string | null {
+    this.ensureInitialized();
+
+    const normalized = resolve(projectPath);
+    const row = this.db.query(
+      'SELECT id FROM projects WHERE project_path = ?'
+    ).get(normalized) as { id: string } | undefined;
+    return row?.id ?? null;
   }
 
   async close(): Promise<void> {

@@ -86,6 +86,7 @@ const ConfigSchema = z.object({
   mcps: McpsSchema.optional(),
   sqlite: SqliteConfigSchema.optional(),
   tmux: TmuxConfigSchema.optional(),
+  openspec: z.boolean().default(false),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -153,6 +154,7 @@ const DEFAULT_CONFIG: Config = {
   tmux: {
     enabled: true,
   },
+  openspec: false,
 };
 
 function getConfigDirs(projectRoot = process.cwd()) {

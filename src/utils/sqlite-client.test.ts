@@ -638,6 +638,37 @@ describe("SQLiteClient", () => {
       expect(events.some((event) => event.event_type === "plan.completed")).toBe(true);
     });
   });
+
+  describe("resolveProjectId", () => {
+    it("returns same ID for same path", () => {
+      const id1 = client.resolveProjectId("/test/project");
+      const id2 = client.resolveProjectId("/test/project");
+      expect(id1).toBe(id2);
+    });
+
+    it("returns different IDs for different paths", () => {
+      const id1 = client.resolveProjectId("/test/project-a");
+      const id2 = client.resolveProjectId("/test/project-b");
+      expect(id1).not.toBe(id2);
+    });
+
+    it("normalizes the path before lookup", () => {
+      const id1 = client.resolveProjectId("/test/project/./sub");
+      const id2 = client.resolveProjectId("/test/project/sub");
+      expect(id1).toBe(id2);
+    });
+  });
+
+  describe("getProjectId", () => {
+    it("returns null for unknown path", () => {
+      expect(client.getProjectId("/never/seen")).toBeNull();
+    });
+
+    it("returns the previously resolved ID", () => {
+      const id = client.resolveProjectId("/test/known");
+      expect(client.getProjectId("/test/known")).toBe(id);
+    });
+  });
 });
 
 describe("createSQLiteClient", () => {

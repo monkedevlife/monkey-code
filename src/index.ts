@@ -16,8 +16,9 @@ import { createStartWorkHook } from './hooks/start-work.js';
 import { createPlanContinuationHook } from './hooks/plan-continuation.js';
 import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
+import { handleOpenSpecRead, handleOpenSpecWrite, handleOpenSpecList, openspecReadSchema, openspecWriteSchema, openspecListSchema } from './tools/openspec.js';
 
-const agents = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder'] as const;
+const agents = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder', 'openspec-plan'] as const;
 const primaryAgents = new Set(['punch', 'harambe', 'caesar', 'george']);
 const schema = tool.schema;
 const pluginRoot = new URL('..', import.meta.url);
@@ -234,6 +235,12 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
   for (const name of agents) {
     const bundled = readBundledAgent(name);
     if (!bundled) continue;
+    if (name === 'openspec-plan' && !pluginState.config?.openspec) continue;
+    if (name === 'caesar' && pluginState.config?.openspec) {
+      bundled.tools = [...(bundled.tools ?? []), 'openspec-read', 'openspec-write', 'openspec-list']
+      bundled.permission = buildBundledAgentPermission(bundled.tools)
+      bundled.prompt = (bundled.prompt ?? '') + '\n\n## OpenSpec Mode\n\nOpenSpec is enabled. You have additional tools for architectural specification:\n- `openspec-read` — read spec files from the central OpenSpec store\n- `openspec-write` — create or update spec files\n- `openspec-list` — list all spec files for the current project\n\nFiles live under `~/.config/monkey-code/openspec/<project-id>/`. Use `delegate-task` to hand off detailed spec authoring to the `openspec-plan` subagent. Do not write specs inline — delegate them.\n'
+    }
 
     const existing =
       agentConfig[name] && typeof agentConfig[name] === 'object' && !Array.isArray(agentConfig[name])
@@ -778,6 +785,34 @@ export const server: Plugin = async (input) => {
         },
         async execute(args) {
           return stringify(await handlePlanUpdateTaskRequest(args));
+        },
+      }),
+      'openspec-read': tool({
+        description: 'Read an OpenSpec specification file',
+        args: {
+          file: schema.string().describe('Relative path to openspec file'),
+        },
+        async execute(args) {
+          return stringify(await handleOpenSpecRead(args, { sqlite: pluginState.sqlite!, worktree: input.worktree }));
+        },
+      }),
+      'openspec-write': tool({
+        description: 'Write or update an OpenSpec specification file',
+        args: {
+          file: schema.string().describe('Relative path to the openspec file'),
+          content: schema.string().describe('File content'),
+        },
+        async execute(args) {
+          return stringify(await handleOpenSpecWrite(args, { sqlite: pluginState.sqlite!, worktree: input.worktree }));
+        },
+      }),
+      'openspec-list': tool({
+        description: 'List OpenSpec specification files for the current project',
+        args: {
+          directory: schema.string().optional().describe('Optional subdirectory filter'),
+        },
+        async execute(args) {
+          return stringify(await handleOpenSpecList(args, { sqlite: pluginState.sqlite!, worktree: input.worktree }));
         },
       }),
     },

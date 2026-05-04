@@ -84,4 +84,58 @@ describe('Monkey Code Plugin', () => {
   it('exports current plugin server for slash command hooks', () => {
     expect(typeof monkeyCodePlugin.server).toBe('function');
   });
+
+  it('reads bundled openspec-plan agent with restricted permissions', () => {
+    const openspecPlan = readBundledAgent('openspec-plan');
+
+    expect(openspecPlan).toBeDefined();
+    expect(openspecPlan?.mode).toBe('subagent');
+    expect(openspecPlan?.tools).toContain('openspec-read');
+    expect(openspecPlan?.tools).toContain('openspec-write');
+    expect(openspecPlan?.tools).toContain('openspec-list');
+    expect(openspecPlan?.tools).toContain('plan-write');
+    expect(openspecPlan?.tools).toContain('delegate-task');
+    expect(openspecPlan?.tools).not.toContain('edit');
+    expect(openspecPlan?.tools).not.toContain('bash');
+    expect(openspecPlan?.permission).toEqual({
+      '*': 'deny',
+      question: 'allow',
+      read: 'allow',
+      glob: 'allow',
+      grep: 'allow',
+      lsp: 'allow',
+      webfetch: 'allow',
+      websearch: 'allow',
+      'plan-write': 'allow',
+      'plan-read': 'allow',
+      'plan-list': 'allow',
+      'plan-update-task': 'allow',
+      'delegate-task': 'allow',
+      'background-output': 'allow',
+      'openspec-read': 'allow',
+      'openspec-write': 'allow',
+      'openspec-list': 'allow',
+    });
+  });
+
+  it('builds permissions for openspec tools correctly', () => {
+    const perms = buildBundledAgentPermission(['openspec-read', 'openspec-write', 'openspec-list', 'read']);
+    expect(perms).toEqual({
+      '*': 'deny',
+      read: 'allow',
+      'openspec-read': 'allow',
+      'openspec-write': 'allow',
+      'openspec-list': 'allow',
+    });
+  });
+
+  it('openspec-plan agent does not have edit or bash tools', () => {
+    const openspecPlan = readBundledAgent('openspec-plan');
+    expect(openspecPlan?.tools).not.toContain('edit');
+    expect(openspecPlan?.tools).not.toContain('bash');
+    expect(openspecPlan?.tools).not.toContain('write');
+    expect(openspecPlan?.tools).not.toContain('apply_patch');
+    expect(openspecPlan?.tools).not.toContain('interactive-bash');
+    expect(openspecPlan?.tools).not.toContain('skill-mcp');
+  });
 });
