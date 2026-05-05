@@ -260,6 +260,18 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
     };
   }
 
+  // Register slash commands for OpenCode autocomplete
+  const commandConfig = (mutableConfig as Record<string, unknown>).command as Record<string, unknown> ?? {};
+  (mutableConfig as Record<string, unknown>).command = {
+    ...commandConfig,
+    'start-work': {
+      name: 'start-work',
+      description: 'Start working from a stored execution plan',
+      template: '/start-work $ARGUMENTS',
+      hints: ['$ARGUMENTS'],
+    },
+  };
+
   for (const name of ['build', 'plan'] as const) {
     const existing =
       agentConfig[name] && typeof agentConfig[name] === 'object' && !Array.isArray(agentConfig[name])

@@ -164,10 +164,15 @@ function quote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function buildCommand(task: string, agent: string, context?: string, directory?: string): string {
-  const message = context
+function buildCommand(task: string, agent: string, context?: string, directory?: string, systemPrompt?: string): string {
+  let message = context
     ? `Task: ${task}\n\nAdditional Context:\n${context}`
     : task;
+
+  if (systemPrompt) {
+    message = `${systemPrompt}\n\n---\n\n${message}`;
+  }
+
   return [
     'opencode run',
     `--agent ${quote(agent)}`,
@@ -214,7 +219,7 @@ export async function delegateTask(
     noReply: true,
   });
 
-  const command = buildCommand(input.task, agent, input.context, ctx.worktree ?? ctx.directory);
+  const command = buildCommand(input.task, agent, input.context, ctx.worktree ?? ctx.directory, systemPrompt);
   const taskId = await ctx.backgroundManager.launch({
     command,
     agentName: agent,
