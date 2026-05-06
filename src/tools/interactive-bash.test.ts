@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   interactiveBash,
   listSessions,
@@ -32,7 +32,7 @@ describe("interactive-bash", () => {
     it("should return error when tmux is not available", async () => {
       const mockManager = {
         isAvailable: () => false,
-        createSession: mock(() => Promise.resolve({ id: "test" })),
+        createSession: vi.fn(() => Promise.resolve({ id: "test" })),
       } as unknown as InteractiveManager;
 
       const result = await interactiveBash(
@@ -352,7 +352,7 @@ describe("interactive-bash", () => {
     it("should handle InteractiveManagerError", async () => {
       const mockManager = {
         isAvailable: () => true,
-        createSession: mock(() => {
+        createSession: vi.fn(() => {
           throw new InteractiveManagerError(
             "Test error",
             "TEST_CODE",
@@ -374,7 +374,7 @@ describe("interactive-bash", () => {
     it("should handle generic errors", async () => {
       const mockManager = {
         isAvailable: () => true,
-        createSession: mock(() => {
+        createSession: vi.fn(() => {
           throw new Error("Generic error");
         }),
       } as unknown as InteractiveManager;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SQLiteClient } from "../utils/sqlite-client.js";
 import { BackgroundManager } from "../managers/BackgroundManager.js";
 import { writePlan } from "../tools/plan-store.js";
@@ -12,15 +12,15 @@ describe("plan-continuation hook", () => {
     sqlite = new SQLiteClient(":memory:");
     await sqlite.initialize();
     backgroundManager = {
-      launch: mock(() => Promise.resolve("task-123")),
-      cancel: mock(() => Promise.resolve()),
-      getStatus: mock(() => Promise.resolve(null)),
-      getOutput: mock(() => Promise.resolve(null)),
-      listTasks: mock(() => Promise.resolve([])),
-      getRunningCount: mock(() => 0),
-      getConcurrencyLimit: mock(() => 5),
-      setConcurrencyLimit: mock(() => {}),
-      onTaskComplete: mock(() => {}),
+      launch: vi.fn(() => Promise.resolve("task-123")),
+      cancel: vi.fn(() => Promise.resolve()),
+      getStatus: vi.fn(() => Promise.resolve(null)),
+      getOutput: vi.fn(() => Promise.resolve(null)),
+      listTasks: vi.fn(() => Promise.resolve([])),
+      getRunningCount: vi.fn(() => 0),
+      getConcurrencyLimit: vi.fn(() => 5),
+      setConcurrencyLimit: vi.fn(() => {}),
+      onTaskComplete: vi.fn(() => {}),
     } as unknown as BackgroundManager;
   });
 
@@ -45,8 +45,8 @@ describe("plan-continuation hook", () => {
 
     const client = {
       session: {
-        create: mock(() => Promise.resolve({ data: { id: "session-child" } })),
-        prompt: mock(() => Promise.resolve({ data: {} })),
+        create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
+        prompt: vi.fn(() => Promise.resolve({ data: {} })),
       },
     };
 
@@ -77,8 +77,8 @@ describe("plan-continuation hook", () => {
         backgroundManager,
         client: {
           session: {
-            create: mock(() => Promise.resolve({ data: { id: "session-child" } })),
-            prompt: mock(() => Promise.resolve({ data: {} })),
+            create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
+            prompt: vi.fn(() => Promise.resolve({ data: {} })),
           },
         },
         projectPath: "/tmp/none",
@@ -107,8 +107,8 @@ describe("plan-continuation hook", () => {
 
     const client = {
       session: {
-        create: mock(() => Promise.resolve({ data: { id: "session-child" } })),
-        prompt: mock(() => Promise.resolve({ data: {} })),
+        create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
+        prompt: vi.fn(() => Promise.resolve({ data: {} })),
       },
     };
 
@@ -143,8 +143,8 @@ describe("plan-continuation hook", () => {
 
     const client = {
       session: {
-        create: mock(() => Promise.resolve({ data: { id: "session-child" } })),
-        prompt: mock(() => Promise.resolve({ data: {} })),
+        create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
+        prompt: vi.fn(() => Promise.resolve({ data: {} })),
       },
     };
 

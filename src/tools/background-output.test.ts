@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getBackgroundOutput, BackgroundOutputParams, BackgroundOutputResult } from "./background-output";
 import { BackgroundManager } from "../managers/BackgroundManager.js";
 import { SQLiteClient } from "../utils/sqlite-client.js";
@@ -64,11 +64,11 @@ describe("getBackgroundOutput", () => {
 
       expect(result.taskId).toBe(taskId);
       expect(["pending", "in_progress"]).toContain(result.status);
-      expect(result.startTime).toBeString();
+      expect(result.startTime).toBeTypeOf("string");
       expect(result.waited).toBe(false);
       expect(result.outputTruncated).toBe(false);
       expect(result.outputLength).toBe(0);
-      expect(result.nextActions).toBeArray();
+      expect(result.nextActions).toBeInstanceOf(Array);
       expect(result.nextActions.some(a => a.action === 'poll-again')).toBe(true);
     });
 
@@ -84,7 +84,7 @@ describe("getBackgroundOutput", () => {
       expect(["pending", "in_progress"]).toContain(result.status);
       expect(result.waited).toBe(false);
       expect(result.outputTruncated).toBe(false);
-      expect(result.nextActions).toBeArray();
+      expect(result.nextActions).toBeInstanceOf(Array);
     });
   });
 
@@ -101,12 +101,12 @@ describe("getBackgroundOutput", () => {
 
       expect(result.taskId).toBe(taskId);
       expect(result.status).toBe("completed");
-      expect(result.output).toBeString();
-      expect(result.startTime).toBeString();
+      expect(result.output).toBeTypeOf("string");
+      expect(result.startTime).toBeTypeOf("string");
       expect(result.waited).toBe(false);
       expect(result.outputTruncated).toBe(false);
       expect(result.outputLength).toBeGreaterThan(0);
-      expect(result.nextActions).toBeArray();
+      expect(result.nextActions).toBeInstanceOf(Array);
     });
 
     it("should include endTime and metadata for completed task", async () => {
@@ -119,7 +119,7 @@ describe("getBackgroundOutput", () => {
       const params: BackgroundOutputParams = { taskId };
       const result = await getBackgroundOutput(manager, params);
 
-      expect(result.endTime).toBeString();
+      expect(result.endTime).toBeTypeOf("string");
       const endTime = new Date(result.endTime!);
       expect(endTime.getTime()).toBeGreaterThan(0);
       expect(result.outputLength).toBeGreaterThan(0);
@@ -143,7 +143,7 @@ describe("getBackgroundOutput", () => {
       expect(result.output).toBeDefined();
       expect(result.waited).toBe(false);
       expect(result.outputTruncated).toBe(false);
-      expect(result.nextActions).toBeArray();
+      expect(result.nextActions).toBeInstanceOf(Array);
     });
   });
 

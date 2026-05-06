@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -45,13 +45,13 @@ function createMockOpenCodeClient(): OpenCodeClient {
   let sessionCounter = 0;
   return {
     session: {
-      create: mock(() => {
+      create: vi.fn(() => {
         sessionCounter++;
         return Promise.resolve({
           data: { id: `punch_session_${Date.now()}_${sessionCounter}` },
         });
       }),
-      prompt: mock(() => Promise.resolve({ data: {} })),
+      prompt: vi.fn(() => Promise.resolve({ data: {} })),
     },
   };
 }
@@ -69,7 +69,7 @@ function createMockBackgroundManager(): MockBackgroundManager {
   };
 
   const manager = {
-    launch: mock((input: {
+    launch: vi.fn((input: {
       command: string;
       agentName?: string;
       context?: string;
@@ -104,7 +104,7 @@ function createMockBackgroundManager(): MockBackgroundManager {
       return Promise.resolve(taskId);
     }),
 
-    cancel: mock((taskId: string) => {
+    cancel: vi.fn((taskId: string) => {
       const task = tasks.get(taskId);
       if (task) {
         task.status = "cancelled";
@@ -114,7 +114,7 @@ function createMockBackgroundManager(): MockBackgroundManager {
       return Promise.resolve();
     }),
 
-    getStatus: mock((taskId: string) => {
+    getStatus: vi.fn((taskId: string) => {
       const task = tasks.get(taskId);
       if (!task) return Promise.resolve(null);
       return Promise.resolve({
@@ -127,12 +127,12 @@ function createMockBackgroundManager(): MockBackgroundManager {
       });
     }),
 
-    getOutput: mock((taskId: string) => {
+    getOutput: vi.fn((taskId: string) => {
       const task = tasks.get(taskId);
       return Promise.resolve(task?.output || null);
     }),
 
-    listTasks: mock((filter?: { agentName?: string; parentSessionId?: string }) => {
+    listTasks: vi.fn((filter?: { agentName?: string; parentSessionId?: string }) => {
       let taskList = Array.from(tasks.values());
       if (filter?.agentName) {
         taskList = taskList.filter((t) => t.agentName === filter.agentName);
@@ -152,10 +152,10 @@ function createMockBackgroundManager(): MockBackgroundManager {
       );
     }),
 
-    getRunningCount: mock(() => 0),
-    getConcurrencyLimit: mock(() => 5),
-    setConcurrencyLimit: mock(() => {}),
-    onTaskComplete: mock((taskId: string, callback: NotificationCallback) => {
+    getRunningCount: vi.fn(() => 0),
+    getConcurrencyLimit: vi.fn(() => 5),
+    setConcurrencyLimit: vi.fn(() => {}),
+    onTaskComplete: vi.fn((taskId: string, callback: NotificationCallback) => {
       notifications.set(taskId, callback);
     }),
 
@@ -182,9 +182,9 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
   let serverCounter = 0;
 
   const manager = {
-    initializeBuiltinMcps: mock(() => Promise.resolve()),
+    initializeBuiltinMcps: vi.fn(() => Promise.resolve()),
 
-    loadSkill: mock((skillPath: string) => {
+    loadSkill: vi.fn((skillPath: string) => {
       const skillName = skillPath.split("/").pop()?.replace(".md", "") || "punch";
       const skill: SkillDefinition = {
         name: skillName,
@@ -203,7 +203,7 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       return Promise.resolve(skill);
     }),
 
-    startMcp: mock((config: McpServerConfig) => {
+    startMcp: vi.fn((config: McpServerConfig) => {
       serverCounter++;
       const serverId = `punch_mcp_${Date.now()}_${serverCounter}`;
       const server: MockServer = {
@@ -217,7 +217,7 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       return Promise.resolve(serverId);
     }),
 
-    stopMcp: mock((serverId: string) => {
+    stopMcp: vi.fn((serverId: string) => {
       const server = servers.get(serverId);
       if (server) {
         server.connected = false;
@@ -226,7 +226,7 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       return Promise.resolve();
     }),
 
-    getClient: mock((serverId: string) => {
+    getClient: vi.fn((serverId: string) => {
       const server = servers.get(serverId);
       if (server) {
         server.lastUsedAt = Date.now();
@@ -234,7 +234,7 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       return server;
     }),
 
-    sendJsonRpc: mock((serverId: string, method: string, params?: unknown) => {
+    sendJsonRpc: vi.fn((serverId: string, method: string, params?: unknown) => {
       const server = servers.get(serverId);
       if (!server || !server.connected) {
         throw new Error(`Server ${serverId} not connected`);
@@ -252,37 +252,37 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       });
     }),
 
-    getAllServers: mock(() => Array.from(servers.values())),
+    getAllServers: vi.fn(() => Array.from(servers.values())),
 
-    getServersBySession: mock((sessionId: string) => {
+    getServersBySession: vi.fn((sessionId: string) => {
       return Array.from(servers.values()).filter((s) =>
         s.id.includes(sessionId)
       );
     }),
 
-    stopSessionMcps: mock((sessionId: string) => {
+    stopSessionMcps: vi.fn((sessionId: string) => {
       const toStop = Array.from(servers.values()).filter((s) =>
         s.id.includes(sessionId)
       );
       return Promise.all(toStop.map((s) => manager.stopMcp(s.id)));
     }),
 
-    cleanup: mock(() => {
+    cleanup: vi.fn(() => {
       servers.clear();
       return Promise.resolve();
     }),
 
-    isRunning: mock((serverId: string) => {
+    isRunning: vi.fn((serverId: string) => {
       const server = servers.get(serverId);
       return server ? server.connected : false;
     }),
 
-    isConnected: mock((serverId: string) => {
+    isConnected: vi.fn((serverId: string) => {
       const server = servers.get(serverId);
       return server ? server.connected : false;
     }),
 
-    getServerCount: mock(() => servers.size),
+    getServerCount: vi.fn(() => servers.size),
 
     _servers: servers,
   } as unknown as SkillMcpManager & {
@@ -417,7 +417,7 @@ This is the ${name} agent skill.
       });
 
       expect(mockClient.session.create).toHaveBeenCalled();
-      const createCall = (mockClient.session.create as ReturnType<typeof mock>).mock.calls[0];
+      const createCall = (mockClient.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(createCall[0].parentID).toBe("main_session");
     });
 
@@ -434,7 +434,7 @@ This is the ${name} agent skill.
       });
 
       expect(mockBgManager.launch).toHaveBeenCalled();
-      const launchCall = (mockBgManager.launch as ReturnType<typeof mock>).mock.calls[0];
+      const launchCall = (mockBgManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(launchCall[0].agentName).toBe("punch");
       expect(launchCall[0].context).toBe("PR #123: Add new feature to dashboard");
     });
@@ -753,11 +753,11 @@ This is the ${name} agent skill.
     });
 
     it("should handle delegation failure", async () => {
-      mockClient.session.create = mock(() =>
+      mockClient.session.create = vi.fn(() =>
         Promise.resolve({ data: undefined })
       );
 
-      expect(
+      await expect(
         delegateTask(
           { task: "Will fail", agent: "punch" },
           {
@@ -797,7 +797,7 @@ This is the ${name} agent skill.
 
       await skillMcp({ skill: skillPath, action: "load" }, skillCtx);
 
-      mockSkillManager.sendJsonRpc = mock(() => {
+      mockSkillManager.sendJsonRpc = vi.fn(() => {
         throw new Error("Punch MCP server error");
       });
 

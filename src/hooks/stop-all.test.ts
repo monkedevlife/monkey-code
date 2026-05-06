@@ -1,22 +1,22 @@
-import { describe, it, expect, mock } from "bun:test";
+import { describe, it, expect, vi } from 'vitest';
 import { createStopAllHook } from "./stop-all.js";
 
 describe("stop-all hook", () => {
   it("cancels all background tasks, cleans interactive sessions, and aborts current session", async () => {
     const backgroundManager = {
-      listTasks: mock(() => Promise.resolve([
+      listTasks: vi.fn(() => Promise.resolve([
         { id: "task-1", status: "pending" },
         { id: "task-2", status: "in_progress" },
         { id: "task-3", status: "completed" },
       ])),
-      cancel: mock(() => Promise.resolve()),
+      cancel: vi.fn(() => Promise.resolve()),
     } as any;
 
     const interactiveManager = {
-      cleanup: mock(() => Promise.resolve()),
+      cleanup: vi.fn(() => Promise.resolve()),
     } as any;
 
-    const abortCurrentSession = mock(() => Promise.resolve());
+    const abortCurrentSession = vi.fn(() => Promise.resolve());
 
     const hook = createStopAllHook({
       backgroundManager,
@@ -39,8 +39,8 @@ describe("stop-all hook", () => {
 
   it("ignores non stop-all messages", async () => {
     const backgroundManager = {
-      listTasks: mock(() => Promise.resolve([])),
-      cancel: mock(() => Promise.resolve()),
+      listTasks: vi.fn(() => Promise.resolve([])),
+      cancel: vi.fn(() => Promise.resolve()),
     } as any;
 
     const hook = createStopAllHook({ backgroundManager });

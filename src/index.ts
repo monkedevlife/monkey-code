@@ -16,7 +16,7 @@ import { createStartWorkHook } from './hooks/start-work.js';
 import { createPlanContinuationHook } from './hooks/plan-continuation.js';
 import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
-import { handleOpenSpecRead, handleOpenSpecWrite, handleOpenSpecList, openspecReadSchema, openspecWriteSchema, openspecListSchema } from './tools/openspec.js';
+import { handleOpenSpecRead, handleOpenSpecWrite, handleOpenSpecList } from './tools/openspec.js';
 
 const agents = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder', 'openspec-plan'] as const;
 const primaryAgents = new Set(['punch', 'harambe', 'caesar', 'george']);
@@ -176,8 +176,8 @@ export function buildBundledAgentPermission(tools: string[] | undefined) {
 function mergeBundledPermission(
   bundledPermission: Record<string, unknown> | undefined,
   existingPermission: unknown,
-) {
-  if (!bundledPermission) return existingPermission;
+): Record<string, unknown> | undefined {
+  if (!bundledPermission) return existingPermission as Record<string, unknown> | undefined;
   if (!isRecord(existingPermission)) return bundledPermission;
 
   return {
@@ -722,83 +722,6 @@ export const server: Plugin = async (input) => {
           return stringify(await handleSkillMcpRequest(args, input.worktree));
         },
       }),
-      'plan-write': tool({
-        description: 'Write or update a structured execution plan in the SQLite plan store',
-        args: {
-          id: schema.string().optional().describe('Existing plan ID to update'),
-          projectPath: schema.string().optional().describe('Project path for the plan'),
-          worktree: schema.string().optional().describe('Worktree path for the plan'),
-          sessionId: schema.string().optional().describe('Owning session ID'),
-          parentSessionId: schema.string().optional().describe('Parent session ID'),
-          agent: schema.string().describe('Agent creating the plan'),
-          title: schema.string().describe('Plan title'),
-          slug: schema.string().optional().describe('Plan slug'),
-          status: schema.enum(['draft', 'active', 'blocked', 'completed', 'cancelled', 'superseded']).optional().describe('Plan status'),
-          sourceRequest: schema.string().describe('Original user request'),
-          summary: schema.string().optional().describe('Short summary of the plan'),
-          markdown: schema.string().describe('Full plan markdown'),
-          plan: schema.record(schema.string(), schema.unknown()).optional().describe('Structured plan JSON payload'),
-          tasks: schema.array(
-            schema.object({
-              id: schema.string().optional(),
-              taskNumber: schema.string().optional(),
-              title: schema.string(),
-              status: schema.enum(['pending', 'in_progress', 'completed', 'blocked', 'cancelled']).optional(),
-              wave: schema.string().optional(),
-              dependsOn: schema.array(schema.string()).optional(),
-              category: schema.string().optional(),
-              skills: schema.array(schema.string()).optional(),
-              references: schema.array(schema.unknown()).optional(),
-              acceptanceCriteria: schema.array(schema.string()).optional(),
-              qaScenarios: schema.array(schema.unknown()).optional(),
-              notes: schema.string().optional(),
-            })
-          ).optional().describe('Structured plan tasks'),
-        },
-        async execute(args, context) {
-          return stringify(await handlePlanWriteRequest(args as PlanWriteInput, context.sessionID, input));
-        },
-      }),
-      'plan-read': tool({
-        description: 'Read a stored plan and its tasks from the SQLite plan store',
-        args: {
-          id: schema.string().optional().describe('Plan ID'),
-          projectPath: schema.string().optional().describe('Project path'),
-          planName: schema.string().optional().describe('Plan slug or title'),
-          status: schema.enum(['draft', 'active', 'blocked', 'completed', 'cancelled', 'superseded']).optional().describe('Optional status filter when reading latest plan'),
-        },
-        async execute(args) {
-          return stringify(await handlePlanReadRequest(args as PlanReadInput, input));
-        },
-      }),
-      'plan-list': tool({
-        description: 'List stored plans for the current project or session',
-        args: {
-          projectPath: schema.string().optional().describe('Project path'),
-          sessionId: schema.string().optional().describe('Session ID filter'),
-          status: schema.enum(['draft', 'active', 'blocked', 'completed', 'cancelled', 'superseded']).optional().describe('Status filter'),
-          limit: schema.number().min(1).max(200).optional().describe('Maximum number of plans to return'),
-        },
-        async execute(args) {
-          return stringify(await handlePlanListRequest(args as PlanListInput, input));
-        },
-      }),
-      'plan-update-task': tool({
-        description: 'Update a stored plan task status and append an optional plan event',
-        args: {
-          planId: schema.string().describe('Plan ID'),
-          taskId: schema.string().optional().describe('Plan task ID'),
-          taskNumber: schema.string().optional().describe('Plan task number'),
-          status: schema.enum(['pending', 'in_progress', 'completed', 'blocked', 'cancelled']).optional().describe('Updated task status'),
-          wave: schema.string().optional().describe('Wave label'),
-          notes: schema.string().optional().describe('Task notes'),
-          eventType: schema.string().optional().describe('Optional plan event type to append'),
-          eventPayload: schema.record(schema.string(), schema.unknown()).optional().describe('Optional plan event payload'),
-        },
-        async execute(args) {
-          return stringify(await handlePlanUpdateTaskRequest(args));
-        },
-      }),
       'openspec-read': tool({
         description: 'Read an OpenSpec specification file',
         args: {
@@ -848,7 +771,7 @@ export const server: Plugin = async (input) => {
         await startWorkHook['chat.message']?.(hookInput as { sessionID: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
       if (stopAllHook) {
-        await stopAllHook['chat.message']?.(hookInput as { sessionID: string; client?: unknown }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
+        await stopAllHook['chat.message']?.(hookInput as { sessionID: string; client?: { session?: { abort?: (params: unknown) => Promise<unknown> } } }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
     },
   };

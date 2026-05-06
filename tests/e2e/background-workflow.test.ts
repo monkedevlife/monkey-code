@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { delegateTask, type DelegateTaskInput, type OpenCodeClient } from "../../src/tools/delegate-task.js";
 import { getBackgroundOutput } from "../../src/tools/background-output.js";
 import { BackgroundManager } from "../../src/managers/BackgroundManager.js";
@@ -29,13 +29,13 @@ function createMockOpenCodeClient(): OpenCodeClient {
   let sessionCounter = 0;
   return {
     session: {
-      create: mock(() => {
+      create: vi.fn(() => {
         sessionCounter++;
         return Promise.resolve({
           data: { id: `mock_session_${Date.now()}_${sessionCounter}` },
         });
       }),
-      prompt: mock(() => Promise.resolve({ data: {} })),
+      prompt: vi.fn(() => Promise.resolve({ data: {} })),
     },
   };
 }
@@ -53,7 +53,7 @@ function createMockBackgroundManager(): MockBackgroundManager {
   };
 
   const manager = {
-    launch: mock((input: {
+    launch: vi.fn((input: {
       command: string;
       agentName?: string;
       context?: string;
@@ -88,7 +88,7 @@ function createMockBackgroundManager(): MockBackgroundManager {
       return Promise.resolve(taskId);
     }),
 
-    cancel: mock((taskId: string) => {
+    cancel: vi.fn((taskId: string) => {
       const task = tasks.get(taskId);
       if (task) {
         task.status = "cancelled";
@@ -98,7 +98,7 @@ function createMockBackgroundManager(): MockBackgroundManager {
       return Promise.resolve();
     }),
 
-    getStatus: mock((taskId: string) => {
+    getStatus: vi.fn((taskId: string) => {
       const task = tasks.get(taskId);
       if (!task) return Promise.resolve(null);
       return Promise.resolve({
@@ -111,12 +111,12 @@ function createMockBackgroundManager(): MockBackgroundManager {
       });
     }),
 
-    getOutput: mock((taskId: string) => {
+    getOutput: vi.fn((taskId: string) => {
       const task = tasks.get(taskId);
       return Promise.resolve(task?.output || null);
     }),
 
-    listTasks: mock(() => {
+    listTasks: vi.fn(() => {
       return Promise.resolve(
         Array.from(tasks.values()).map((t) => ({
           id: t.id,
@@ -129,10 +129,10 @@ function createMockBackgroundManager(): MockBackgroundManager {
       );
     }),
 
-    getRunningCount: mock(() => 0),
-    getConcurrencyLimit: mock(() => 5),
-    setConcurrencyLimit: mock(() => {}),
-    onTaskComplete: mock((taskId: string, callback: NotificationCallback) => {
+    getRunningCount: vi.fn(() => 0),
+    getConcurrencyLimit: vi.fn(() => 5),
+    setConcurrencyLimit: vi.fn(() => {}),
+    onTaskComplete: vi.fn((taskId: string, callback: NotificationCallback) => {
       notifications.set(taskId, callback);
     }),
 
@@ -208,7 +208,7 @@ describe("E2E: Background Task Workflow", () => {
         parentSessionId: "parent_session_abc",
       });
 
-      const createCall = (mockClient.session.create as ReturnType<typeof mock>).mock.calls[0];
+      const createCall = (mockClient.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(createCall[0].parentID).toBe("parent_session_abc");
     });
 
@@ -226,7 +226,7 @@ describe("E2E: Background Task Workflow", () => {
       });
 
       expect(mockManager.launch).toHaveBeenCalled();
-      const launchCall = (mockManager.launch as ReturnType<typeof mock>).mock.calls[0];
+      const launchCall = (mockManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(launchCall[0].context).toBe("Use PostgreSQL best practices");
       expect(launchCall[0].timeout).toBe(45);
     });
@@ -377,7 +377,7 @@ describe("E2E: Background Task Workflow", () => {
 
   describe("Error Handling", () => {
     it("should throw error when task not found", async () => {
-      expect(
+      await expect(
         getBackgroundOutput(mockManager, {
           taskId: "nonexistent_task",
           wait: false,
@@ -403,7 +403,7 @@ describe("E2E: Background Task Workflow", () => {
     });
 
     it("should handle session creation failure", async () => {
-      mockClient.session.create = mock(() =>
+      mockClient.session.create = vi.fn(() =>
         Promise.resolve({ data: undefined })
       );
 
@@ -412,7 +412,7 @@ describe("E2E: Background Task Workflow", () => {
         agent: "tasker",
       };
 
-      expect(
+      await expect(
         delegateTask(input, {
           backgroundManager: mockManager,
           client: mockClient,

@@ -9,25 +9,35 @@
   },
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "bun build --target=bun --outdir=dist src/index.ts",
-    "typecheck": "bun --bun tsc --noEmit 2>&1 | grep -E '^(src/|[0-9]+ error)' || true",
-    "test": "bun test",
-    "dev": "bun --watch run src/index.ts",
-    "postinstall": "bun run scripts/postinstall.ts"
+    "build": "tsup src/index.ts --format esm --out-dir dist --dts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx watch src/index.ts",
+    "postinstall": "tsx scripts/postinstall.ts"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.14.24",
+    "better-sqlite3": "^12.9.0",
     "js-yaml": "^4.1.0",
     "sqlite-vss": "^0.1.2",
     "zod": "^3.22.0"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/js-yaml": "^4.0.5",
-    "typescript": "^5.3.0"
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^3.0.0"
   },
   "engines": {
-    "bun": ">=1.0.0",
+    "node": ">=20.0.0",
     "opencode": ">=1.14.24"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   loadConfig,
   getConfigPaths,
@@ -298,7 +298,7 @@ describe('Config System', () => {
     it('should provide storage paths', () => {
       const paths = getConfigPaths();
 
-      expect(paths.projectConfig).toEndWith('/.opencode/monkey-code.json');
+      expect(paths.projectConfig).toMatch(/\/\.opencode\/monkey-code\.json$/);
       expect(paths.userConfigDir).toContain('.config/monkey-code');
       expect(paths.dbPath).toContain('.config/monkey-code/monkey.db');
       expect(paths.tasksDir).toContain('.config/monkey-code/tasks');

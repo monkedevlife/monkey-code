@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -30,9 +30,9 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
   let serverCounter = 0;
 
   const manager: MockSkillMcpManager = {
-    initializeBuiltinMcps: mock(() => Promise.resolve()),
+    initializeBuiltinMcps: vi.fn(() => Promise.resolve()),
 
-    loadSkill: mock((skillPath: string) => {
+    loadSkill: vi.fn((skillPath: string) => {
       const skillName = skillPath.split("/").pop()?.replace(".md", "") || "unknown";
       const isNoMcpSkill = skillName === "no-mcp" || skillPath.includes("no-mcp");
       const skill: SkillDefinition = {
@@ -52,7 +52,7 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       return Promise.resolve(skill);
     }),
 
-    startMcp: mock((config: McpServerConfig) => {
+    startMcp: vi.fn((config: McpServerConfig) => {
       serverCounter++;
       const serverId = `mock_mcp_${Date.now()}_${serverCounter}`;
       const server: MockServer = {
@@ -66,7 +66,7 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       return Promise.resolve(serverId);
     }),
 
-    stopMcp: mock((serverId: string) => {
+    stopMcp: vi.fn((serverId: string) => {
       const server = servers.get(serverId);
       if (server) {
         server.connected = false;
@@ -75,7 +75,7 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       return Promise.resolve();
     }),
 
-    getClient: mock((serverId: string) => {
+    getClient: vi.fn((serverId: string) => {
       const server = servers.get(serverId);
       if (server) {
         server.lastUsedAt = Date.now();
@@ -83,7 +83,7 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       return server;
     }),
 
-    sendJsonRpc: mock((serverId: string, method: string, params?: unknown) => {
+    sendJsonRpc: vi.fn((serverId: string, method: string, params?: unknown) => {
       const server = servers.get(serverId);
       if (!server || !server.connected) {
         throw new Error(`Server ${serverId} not connected`);
@@ -97,37 +97,37 @@ function createMockSkillMcpManager(): MockSkillMcpManager {
       });
     }),
 
-    getAllServers: mock(() => Array.from(servers.values())),
+    getAllServers: vi.fn(() => Array.from(servers.values())),
 
-    getServersBySession: mock((sessionId: string) => {
+    getServersBySession: vi.fn((sessionId: string) => {
       return Array.from(servers.values()).filter((s) =>
         s.id.includes(sessionId)
       );
     }),
 
-    stopSessionMcps: mock((sessionId: string) => {
+    stopSessionMcps: vi.fn((sessionId: string) => {
       const toStop = Array.from(servers.values()).filter((s) =>
         s.id.includes(sessionId)
       );
       return Promise.all(toStop.map((s) => manager.stopMcp(s.id)));
     }),
 
-    cleanup: mock(() => {
+    cleanup: vi.fn(() => {
       servers.clear();
       return Promise.resolve();
     }),
 
-    isRunning: mock((serverId: string) => {
+    isRunning: vi.fn((serverId: string) => {
       const server = servers.get(serverId);
       return server ? server.connected : false;
     }),
 
-    isConnected: mock((serverId: string) => {
+    isConnected: vi.fn((serverId: string) => {
       const server = servers.get(serverId);
       return server ? server.connected : false;
     }),
 
-    getServerCount: mock(() => servers.size),
+    getServerCount: vi.fn(() => servers.size),
 
     _servers: servers,
   } as unknown as MockSkillMcpManager;
@@ -574,7 +574,7 @@ No servers here.
 
       await skillMcp({ skill: skillPath, action: "load" }, ctx);
 
-      mockManager.sendJsonRpc = mock(() => {
+      mockManager.sendJsonRpc = vi.fn(() => {
         throw new Error("MCP server error: Connection refused");
       });
 

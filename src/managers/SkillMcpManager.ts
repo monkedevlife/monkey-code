@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { dirname } from "path";
+import { spawn, type ChildProcess } from "node:child_process";
 import yaml from "js-yaml";
 import type {
   McpServerConfig,
@@ -11,7 +12,7 @@ import type { McpsConfig } from "../config.js";
 export interface McpServerProcess {
   id: string;
   config: McpServerConfig;
-  process?: ReturnType<typeof Bun.spawn>;
+  process?: ChildProcess;
   startedAt: number;
   lastUsedAt: number;
   sessionId?: string;
@@ -121,11 +122,13 @@ export class SkillMcpManager implements ISkillMcpManager {
     }
 
     try {
-      const proc = Bun.spawn(["chrome-devtools-mcp", "--help"], {
-        stdout: "ignore",
-        stderr: "ignore",
+      const proc = spawn("chrome-devtools-mcp", ["--help"], {
+        stdio: "ignore",
       });
-      const exitCode = await proc.exited;
+      const exitCode = await new Promise<number | null>((resolve) => {
+        proc.on("exit", resolve);
+        proc.on("error", () => resolve(null));
+      });
       if (exitCode === 0) {
         return {
           command: "chrome-devtools-mcp",
@@ -235,12 +238,10 @@ export class SkillMcpManager implements ISkillMcpManager {
 
      const fullEnv = { ...process.env, ...serverConfig.env };
 
-     const proc = Bun.spawn([serverConfig.command, ...(serverConfig.args || [])], {
-       env: fullEnv,
-       stdout: "pipe",
-       stderr: "pipe",
-       stdin: "pipe",
-     });
+      const proc = spawn(serverConfig.command, serverConfig.args || [], {
+        env: fullEnv,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
 
       const server: McpServerProcess = {
         id,
@@ -278,7 +279,7 @@ export class SkillMcpManager implements ISkillMcpManager {
         server.process.kill("SIGTERM");
 
         await Promise.race([
-          server.process.exited,
+          new Promise<void>((resolve) => server.process!.on("exit", () => resolve())),
           new Promise<void>((resolve) => setTimeout(resolve, 2000)),
         ]);
 

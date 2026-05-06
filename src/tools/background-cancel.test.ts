@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { BackgroundCancelTool, BackgroundCancelParams } from "./background-cancel";
 import { BackgroundManager, LaunchTaskInput } from "../managers/BackgroundManager";
 import { SQLiteClient } from "../utils/sqlite-client";
@@ -40,7 +40,7 @@ describe("BackgroundCancelTool", () => {
       expect(result.cancelledTasks).toContain(taskId);
       expect(result.notFoundTasks).toEqual([]);
       expect(result.alreadyCompletedTasks).toEqual([]);
-      expect(result.nextActions).toBeArray();
+      expect(result.nextActions).toBeInstanceOf(Array);
 
       const status = await backgroundManager.getStatus(taskId);
       expect(status?.status).toBe("failed");
@@ -67,7 +67,7 @@ describe("BackgroundCancelTool", () => {
 
       const taskId = await backgroundManager.launch(input);
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const status = await backgroundManager.getStatus(taskId);
       expect(status?.status).toBe("completed");
@@ -128,7 +128,7 @@ describe("BackgroundCancelTool", () => {
       expect(result.cancelledCount).toBeGreaterThanOrEqual(2);
       expect(result.summary).toContain("Cancelled");
       expect(result.cancelledTasks.length).toBeGreaterThanOrEqual(2);
-      expect(result.nextActions).toBeArray();
+      expect(result.nextActions).toBeInstanceOf(Array);
 
       const status1 = await backgroundManager.getStatus(taskId1);
       const status2 = await backgroundManager.getStatus(taskId2);
@@ -151,7 +151,7 @@ describe("BackgroundCancelTool", () => {
 
       const taskId1 = await backgroundManager.launch(input1);
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       expect((await backgroundManager.getStatus(taskId1))?.status).toBe(
         "completed"

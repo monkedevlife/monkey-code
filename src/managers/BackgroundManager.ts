@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { text } from "node:stream/consumers";
 import { SQLiteClient } from "../utils/sqlite-client";
 import { BackgroundTask, Task, IBackgroundManager } from "../types";
 import { updatePlanTaskState } from "../tools/plan-store";
@@ -131,29 +133,33 @@ export class BackgroundManager implements IBackgroundManager {
   }
 
   private async executeTask(taskId: string, command: string, signal: AbortSignal): Promise<void> {
-    try {
-      if (signal.aborted) {
-        throw new Error("Task was cancelled");
-      }
-      const shell = process.env.SHELL || "/bin/sh";
-      const proc = Bun.spawn([shell, "-lc", command], { stdout: "pipe", stderr: "pipe", signal });
-      await proc.exited;
-      const stdout = await new Response(proc.stdout).text();
-      const stderr = await new Response(proc.stderr).text();
-      const exitCode = proc.exitCode;
-      if (signal.aborted) {
-        await this.handleTaskCompletion(taskId, "cancelled", stdout, stderr);
-      } else if (exitCode === 0) {
-        await this.handleTaskCompletion(taskId, "completed", stdout, stderr);
-      } else {
-        await this.handleTaskCompletion(taskId, "failed", stdout, stderr || `Process exited with code ${exitCode}`);
-      }
-    } catch (error) {
-      if (signal.aborted) {
-        await this.handleTaskCompletion(taskId, "cancelled", "", "Task was cancelled");
-      } else {
-        throw error;
-      }
+    if (signal.aborted) {
+      await this.handleTaskCompletion(taskId, "cancelled", "", "Task was cancelled");
+      return;
+    }
+
+    const shell = process.env.SHELL || "/bin/sh";
+    const proc = spawn(shell, ["-lc", command], { stdio: ["ignore", "pipe", "pipe"], signal });
+
+    let error: Error | undefined;
+    proc.on("error", (err) => {
+      error = err;
+    });
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      text(proc.stdout!).catch(() => ""),
+      text(proc.stderr!).catch(() => ""),
+      new Promise<number | null>((resolve) => proc.on("exit", resolve)),
+    ]);
+
+    if (signal.aborted || (error && error.name === "AbortError")) {
+      await this.handleTaskCompletion(taskId, "cancelled", stdout, stderr);
+    } else if (error) {
+      await this.handleTaskCompletion(taskId, "failed", stdout, error.message);
+    } else if (exitCode === 0) {
+      await this.handleTaskCompletion(taskId, "completed", stdout, stderr);
+    } else {
+      await this.handleTaskCompletion(taskId, "failed", stdout, stderr || `Process exited with code ${exitCode}`);
     }
   }
 

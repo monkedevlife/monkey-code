@@ -236,8 +236,9 @@ function readAgentFrontmatter(name: AgentName) {
     throw new Error(`Failed to parse agent frontmatter for ${name}`);
   }
 
+  const frontmatterContent = match[1] ?? '';
   return Object.fromEntries(
-    match[1]
+    frontmatterContent
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
@@ -271,9 +272,13 @@ export function createUserOpencodeConfigTemplate(): Partial<Config> {
   return {
     $schema: CONFIG_SCHEMA_URL,
     agents: createDefaultAgentConfigs(),
-    background: {},
+    background: {
+      maxConcurrent: 5,
+      pollInterval: 5000,
+    },
     mcps: {
       chromeDevTools: {
+        enabled: true,
         executable: defaultChromeExecutable(),
       },
     },

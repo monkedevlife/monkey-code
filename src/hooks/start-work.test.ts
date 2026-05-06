@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SQLiteClient } from "../utils/sqlite-client.js";
 import { writePlan } from "../tools/plan-store.js";
 import { createStartWorkHook } from "./start-work.js";

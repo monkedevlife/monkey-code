@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import createPlugin, { getPluginState, resetPluginState } from './plugin';
 import type { PluginContext, PluginEvent, ToolContext } from './types/index';
 
@@ -132,9 +132,9 @@ describe('Monkey Code Plugin', () => {
         params: { task: 'test task' }
       };
 
-      expect(async () => {
+      await expect((async () => {
         await plugin.hooks.onTool?.(toolContext);
-      }).toThrow();
+      })()).rejects.toThrow();
     });
 
     it('delegate-task accepts all parameters', async () => {
@@ -364,9 +364,9 @@ describe('Monkey Code Plugin', () => {
         params: { taskId: 'non-existent-task' }
       };
 
-      expect(async () => {
+      await expect((async () => {
         await plugin.hooks.onTool?.(toolContext);
-      }).toThrow();
+      })()).rejects.toThrow();
     });
   });
 
@@ -569,9 +569,9 @@ describe('Monkey Code Plugin', () => {
         params: {}
       };
 
-      expect(async () => {
+      await expect((async () => {
         await plugin.hooks.onTool?.(toolContext);
-      }).toThrow();
+      })()).rejects.toThrow();
     });
   });
 
@@ -623,9 +623,9 @@ describe('Monkey Code Plugin', () => {
         data: { taskId: 'task-123', status: 'completed' }
       };
 
-      expect(async () => {
+      await expect((async () => {
         await plugin.hooks.onEvent?.(event);
-      }).not.toThrow();
+      })()).resolves.not.toThrow();
     });
 
     it('handles task:failed event', async () => {
@@ -636,9 +636,9 @@ describe('Monkey Code Plugin', () => {
         data: { taskId: 'task-123', error: 'Something went wrong' }
       };
 
-      expect(async () => {
+      await expect((async () => {
         await plugin.hooks.onEvent?.(event);
-      }).not.toThrow();
+      })()).resolves.not.toThrow();
     });
 
     it('handles session:idle event', async () => {
@@ -657,9 +657,9 @@ describe('Monkey Code Plugin', () => {
         data: { sessionId: 'test-session' }
       };
 
-      expect(async () => {
+      await expect((async () => {
         await plugin.hooks.onEvent?.(event);
-      }).not.toThrow();
+      })()).resolves.not.toThrow();
     });
   });
 
@@ -672,9 +672,9 @@ describe('Monkey Code Plugin', () => {
         timestamp: Date.now()
       };
 
-      expect(async () => {
+      await expect((async () => {
         await plugin.hooks.onEvent?.(event);
-      }).not.toThrow();
+      })()).resolves.not.toThrow();
     });
 
     it('handles session:start with undefined data', async () => {
@@ -685,9 +685,9 @@ describe('Monkey Code Plugin', () => {
         timestamp: Date.now()
       };
 
-      expect(async () => {
+      await expect((async () => {
         await plugin.hooks.onEvent?.(event);
-      }).not.toThrow();
+      })()).resolves.not.toThrow();
     });
   });
 

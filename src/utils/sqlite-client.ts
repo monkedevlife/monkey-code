@@ -1,6 +1,13 @@
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 import { resolve } from "node:path";
 import * as sqliteVss from "sqlite-vss";
+
+type StatementLike = Database.Statement & { finalize(): void };
+
+function prepare(db: Database.Database, sql: string): StatementLike {
+  const stmt = db.prepare(sql);
+  return Object.assign(stmt, { finalize: () => {} }) as StatementLike;
+}
 
 export interface Task {
   id: string;
@@ -139,7 +146,7 @@ export class SQLiteClientError extends Error {
 }
 
 export class SQLiteClient {
-  private db: Database;
+  private db: Database.Database;
   private initialized = false;
   private vssEnabled = false;
 
@@ -175,8 +182,7 @@ export class SQLiteClient {
       sqliteVss.loadVector(this.db);
       sqliteVss.loadVss(this.db);
 
-      const version = this.db
-        .query("SELECT vss_version()")
+      const version = prepare(this.db, "SELECT vss_version()")
         .get() as { "vss_version()": string } | undefined;
 
       if (version && version["vss_version()"]) {
@@ -205,7 +211,7 @@ export class SQLiteClient {
       )
     `);
 
-    const columns = this.db.query(`PRAGMA table_info(tasks)`).all() as Array<{ name: string }>;
+    const columns = prepare(this.db, `PRAGMA table_info(tasks)`).all() as Array<{ name: string }>;
     const existingColumns = new Set(columns.map((column) => column.name));
 
     if (!existingColumns.has("agent_name")) {
@@ -478,7 +484,7 @@ export class SQLiteClient {
   async storeTask(task: Omit<Task, "created_at"> & { created_at?: number }): Promise<void> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       INSERT OR REPLACE INTO tasks 
       (id, status, command, output, created_at, completed_at, embedding, agent_name, parent_session_id, context, plan_id, plan_task_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -512,7 +518,7 @@ export class SQLiteClient {
   async getTask(id: string): Promise<Task | null> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT id, status, command, output, created_at, completed_at, embedding, agent_name, parent_session_id, context, plan_id, plan_task_id
       FROM tasks
       WHERE id = ?
@@ -569,7 +575,7 @@ export class SQLiteClient {
   async getTasksByStatus(status: Task["status"]): Promise<Task[]> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT id, status, command, output, created_at, completed_at, embedding, agent_name, parent_session_id, context, plan_id, plan_task_id
       FROM tasks
       WHERE status = ?
@@ -643,7 +649,7 @@ export class SQLiteClient {
     content: string,
     metadata: Record<string, unknown>
   ): number {
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       INSERT INTO memory (embedding, content, metadata, created_at)
       VALUES (?, ?, ?, ?)
     `);
@@ -665,7 +671,7 @@ export class SQLiteClient {
     content: string,
     metadata: Record<string, unknown>
   ): number {
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       INSERT INTO memory (embedding, content, metadata, created_at)
       VALUES (?, ?, ?, ?)
     `);
@@ -708,7 +714,7 @@ export class SQLiteClient {
   }
 
   private searchSimilarVss(embedding: Float32Array, limit: number): SearchResult[] {
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT rowid, content, metadata, created_at, distance
       FROM memory
       WHERE vss_search(embedding, ?)
@@ -738,7 +744,7 @@ export class SQLiteClient {
   }
 
   private searchSimilarFallback(_embedding: Float32Array, limit: number): SearchResult[] {
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT rowid, content, metadata, created_at
       FROM memory
       ORDER BY created_at DESC, rowid DESC
@@ -768,7 +774,7 @@ export class SQLiteClient {
   async deleteTask(id: string): Promise<boolean> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`DELETE FROM tasks WHERE id = ?`);
+    const stmt = prepare(this.db, `DELETE FROM tasks WHERE id = ?`);
 
     try {
       const result = stmt.run(id);
@@ -786,7 +792,7 @@ export class SQLiteClient {
   async deleteMemory(id: number): Promise<boolean> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`DELETE FROM memory WHERE rowid = ?`);
+    const stmt = prepare(this.db, `DELETE FROM memory WHERE rowid = ?`);
 
     try {
       const result = stmt.run(id);
@@ -809,7 +815,7 @@ export class SQLiteClient {
   ): Promise<void> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       UPDATE tasks 
       SET status = ?, output = COALESCE(?, output), completed_at = ?
       WHERE id = ?
@@ -836,7 +842,7 @@ export class SQLiteClient {
     const status = input.status ?? "draft";
     const createdAt = input.id ? (await this.getPlanById(id))?.created_at ?? now : now;
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       INSERT OR REPLACE INTO plans (
         id, project_path, worktree, session_id, parent_session_id, agent_name, title, slug, status,
         source_request, summary, plan_markdown, plan_json, created_at, updated_at, completed_at, superseded_by
@@ -883,7 +889,7 @@ export class SQLiteClient {
   async getPlanById(id: string): Promise<PlanRecord | null> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT id, project_path, worktree, session_id, parent_session_id, agent_name, title, slug, status,
              source_request, summary, plan_markdown, plan_json, created_at, updated_at, completed_at, superseded_by
       FROM plans
@@ -907,7 +913,7 @@ export class SQLiteClient {
     this.ensureInitialized();
 
     const normalizedSlug = this.slugifyPlanTitle(slugOrTitle);
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT id, project_path, worktree, session_id, parent_session_id, agent_name, title, slug, status,
              source_request, summary, plan_markdown, plan_json, created_at, updated_at, completed_at, superseded_by
       FROM plans
@@ -933,7 +939,7 @@ export class SQLiteClient {
     this.ensureInitialized();
 
     const stmt = status
-      ? this.db.query(`
+      ? prepare(this.db, `
           SELECT id, project_path, worktree, session_id, parent_session_id, agent_name, title, slug, status,
                  source_request, summary, plan_markdown, plan_json, created_at, updated_at, completed_at, superseded_by
           FROM plans
@@ -941,7 +947,7 @@ export class SQLiteClient {
           ORDER BY created_at DESC
           LIMIT 1
         `)
-      : this.db.query(`
+      : prepare(this.db, `
           SELECT id, project_path, worktree, session_id, parent_session_id, agent_name, title, slug, status,
                  source_request, summary, plan_markdown, plan_json, created_at, updated_at, completed_at, superseded_by
           FROM plans
@@ -986,7 +992,7 @@ export class SQLiteClient {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const limit = Math.max(1, Math.min(filters.limit ?? 25, 200));
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT id, project_path, worktree, session_id, parent_session_id, agent_name, title, slug, status,
              source_request, summary, plan_markdown, plan_json, created_at, updated_at, completed_at, superseded_by
       FROM plans
@@ -1011,8 +1017,8 @@ export class SQLiteClient {
   async replacePlanTasks(planId: string, tasks: SavePlanTaskInput[]): Promise<PlanTaskRecord[]> {
     this.ensureInitialized();
 
-    const deleteStmt = this.db.query(`DELETE FROM plan_tasks WHERE plan_id = ?`);
-    const insertStmt = this.db.query(`
+    const deleteStmt = prepare(this.db, `DELETE FROM plan_tasks WHERE plan_id = ?`);
+    const insertStmt = prepare(this.db, `
       INSERT INTO plan_tasks (
         id, plan_id, task_number, title, status, wave, depends_on, category,
         skills_json, references_json, acceptance_criteria_json, qa_scenarios_json,
@@ -1060,7 +1066,7 @@ export class SQLiteClient {
   async getPlanTasks(planId: string): Promise<PlanTaskRecord[]> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT id, plan_id, task_number, title, status, wave, depends_on, category,
              skills_json, references_json, acceptance_criteria_json, qa_scenarios_json,
              notes, created_at, updated_at
@@ -1111,7 +1117,7 @@ export class SQLiteClient {
     const whereClause = input.task_id ? "plan_id = ? AND id = ?" : "plan_id = ? AND task_number = ?";
     params.push(input.plan_id, input.task_id ?? input.task_number ?? "");
 
-    const stmt = this.db.query(`UPDATE plan_tasks SET ${fields.join(", ")} WHERE ${whereClause}`);
+    const stmt = prepare(this.db, `UPDATE plan_tasks SET ${fields.join(", ")} WHERE ${whereClause}`);
 
     try {
       stmt.run(...params);
@@ -1124,7 +1130,7 @@ export class SQLiteClient {
       stmt.finalize();
     }
 
-    const lookupStmt = this.db.query(`
+    const lookupStmt = prepare(this.db, `
       SELECT id, plan_id, task_number, title, status, wave, depends_on, category,
              skills_json, references_json, acceptance_criteria_json, qa_scenarios_json,
              notes, created_at, updated_at
@@ -1144,7 +1150,7 @@ export class SQLiteClient {
   async appendPlanEvent(planId: string, eventType: string, payload?: Record<string, unknown>): Promise<PlanEventRecord> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       INSERT INTO plan_events (plan_id, event_type, payload_json, created_at)
       VALUES (?, ?, ?, ?)
     `);
@@ -1173,7 +1179,7 @@ export class SQLiteClient {
   async getPlanEvents(planId: string): Promise<PlanEventRecord[]> {
     this.ensureInitialized();
 
-    const stmt = this.db.query(`
+    const stmt = prepare(this.db, `
       SELECT id, plan_id, event_type, payload_json, created_at
       FROM plan_events
       WHERE plan_id = ?
@@ -1278,17 +1284,16 @@ export class SQLiteClient {
     this.ensureInitialized();
 
     const normalized = resolve(projectPath);
-    const existing = this.db.query(
+    const existing = prepare(this.db, 
       'SELECT id FROM projects WHERE project_path = ?'
     ).get(normalized) as { id: string } | undefined;
 
     if (existing) return existing.id;
 
     const id = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    this.db.run(
-      'INSERT INTO projects (id, project_path, created_at) VALUES (?, ?, ?)',
-      [id, normalized, Date.now()]
-    );
+    prepare(this.db,
+      'INSERT INTO projects (id, project_path, created_at) VALUES (?, ?, ?)'
+    ).run(id, normalized, Date.now());
     return id;
   }
 
@@ -1296,7 +1301,7 @@ export class SQLiteClient {
     this.ensureInitialized();
 
     const normalized = resolve(projectPath);
-    const row = this.db.query(
+    const row = prepare(this.db, 
       'SELECT id FROM projects WHERE project_path = ?'
     ).get(normalized) as { id: string } | undefined;
     return row?.id ?? null;

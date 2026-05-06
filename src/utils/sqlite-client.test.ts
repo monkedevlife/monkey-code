@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   SQLiteClient,
   SQLiteClientError,
@@ -38,11 +38,11 @@ describe("SQLiteClient", () => {
       const newClient = createSQLiteClient();
       expect(newClient.isInitialized()).toBe(false);
 
-      expect(() => newClient.storeTask({
+      await expect(newClient.storeTask({
         id: "test",
         status: "pending",
         command: "echo test",
-      })).toThrow(SQLiteClientError);
+      })).rejects.toThrow(SQLiteClientError);
 
       await newClient.close();
     });
@@ -272,7 +272,7 @@ describe("SQLiteClient", () => {
     it("should throw error for invalid embedding size", async () => {
       const invalidEmbedding = new Float32Array(100);
 
-      expect(client.storeMemory(invalidEmbedding, "content")).rejects.toThrow(
+      await expect(client.storeMemory(invalidEmbedding, "content")).rejects.toThrow(
         SQLiteClientError
       );
     });
@@ -307,7 +307,7 @@ describe("SQLiteClient", () => {
     it("should throw error for invalid embedding size", async () => {
       const invalidEmbedding = new Float32Array(100);
 
-      expect(client.searchSimilar(invalidEmbedding)).rejects.toThrow(
+      await expect(client.searchSimilar(invalidEmbedding)).rejects.toThrow(
         SQLiteClientError
       );
     });
@@ -315,8 +315,8 @@ describe("SQLiteClient", () => {
     it("should throw error for invalid limit", async () => {
       const query = createMockEmbedding(10);
 
-      expect(client.searchSimilar(query, 0)).rejects.toThrow(SQLiteClientError);
-      expect(client.searchSimilar(query, 101)).rejects.toThrow(SQLiteClientError);
+      await expect(client.searchSimilar(query, 0)).rejects.toThrow(SQLiteClientError);
+      await expect(client.searchSimilar(query, 101)).rejects.toThrow(SQLiteClientError);
     });
 
     it("should return similar memories with distance", async () => {

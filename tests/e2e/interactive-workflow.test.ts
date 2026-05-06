@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   interactiveBash,
   listSessions,
@@ -24,9 +24,9 @@ function createMockInteractiveManager(): MockInteractiveManager {
   let sessionCounter = 0;
 
   const manager: MockInteractiveManager = {
-    isAvailable: mock(() => true),
+    isAvailable: vi.fn(() => true),
 
-    createSession: mock((command: string, cwd?: string) => {
+    createSession: vi.fn((command: string, cwd?: string) => {
       sessionCounter++;
       const sessionId = `mock_session_${Date.now()}_${sessionCounter}`;
       const session: MockSession = {
@@ -49,7 +49,7 @@ function createMockInteractiveManager(): MockInteractiveManager {
       });
     }),
 
-    sendKeys: mock((sessionId: string, keys: string) => {
+    sendKeys: vi.fn((sessionId: string, keys: string) => {
       const session = sessions.get(sessionId);
       if (!session) {
         throw new Error(`Session ${sessionId} not found`);
@@ -61,7 +61,7 @@ function createMockInteractiveManager(): MockInteractiveManager {
       return Promise.resolve();
     }),
 
-    captureOutput: mock((sessionId: string, lines: number = 100) => {
+    captureOutput: vi.fn((sessionId: string, lines: number = 100) => {
       const session = sessions.get(sessionId);
       if (!session) {
         throw new Error(`Session ${sessionId} not found`);
@@ -75,7 +75,7 @@ function createMockInteractiveManager(): MockInteractiveManager {
       return Promise.resolve(output);
     }),
 
-    closeSession: mock((sessionId: string) => {
+    closeSession: vi.fn((sessionId: string) => {
       const session = sessions.get(sessionId);
       if (session) {
         session.isActive = false;
@@ -87,7 +87,7 @@ function createMockInteractiveManager(): MockInteractiveManager {
       return Promise.resolve();
     }),
 
-    listSessions: mock(() => {
+    listSessions: vi.fn(() => {
       const sessionList = Array.from(sessions.values()).map((s) => ({
         id: s.id,
         command: s.command,
@@ -99,7 +99,7 @@ function createMockInteractiveManager(): MockInteractiveManager {
       return Promise.resolve(sessionList.sort((a, b) => b.createdAt - a.createdAt));
     }),
 
-    cleanup: mock(() => {
+    cleanup: vi.fn(() => {
       sessions.clear();
       return Promise.resolve();
     }),
@@ -552,7 +552,7 @@ describe("E2E: Interactive Bash Workflow", () => {
 
   describe("Error Handling", () => {
     it("should handle tmux not available", async () => {
-      mockManager.isAvailable = mock(() => false);
+      mockManager.isAvailable = vi.fn(() => false);
 
       const result = await interactiveBash(
         { command: "bash", action: "start" },

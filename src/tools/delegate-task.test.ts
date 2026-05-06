@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   delegateTask,
   DEFAULT_AGENT,
@@ -13,8 +13,8 @@ import { getSessionPromptParams, clearSessionPromptParams } from "../utils/sessi
 function createMockClient(): OpenCodeClient {
   return {
     session: {
-      create: mock(() => Promise.resolve({ data: { id: `session_${Date.now()}` } })),
-      prompt: mock(() => Promise.resolve({ data: {} })),
+      create: vi.fn(() => Promise.resolve({ data: { id: `session_${Date.now()}` } })),
+      prompt: vi.fn(() => Promise.resolve({ data: {} })),
     },
   };
 }
@@ -22,18 +22,18 @@ function createMockClient(): OpenCodeClient {
 function createMockBackgroundManager(): BackgroundManager {
   let taskCounter = 0;
   return {
-    launch: mock(() => {
+    launch: vi.fn(() => {
       taskCounter++;
       return Promise.resolve(`task_${Date.now()}_${taskCounter}`);
     }),
-    cancel: mock(() => Promise.resolve()),
-    getStatus: mock(() => Promise.resolve(null)),
-    getOutput: mock(() => Promise.resolve(null)),
-    listTasks: mock(() => Promise.resolve([])),
-    getRunningCount: mock(() => 0),
-    getConcurrencyLimit: mock(() => 5),
-    setConcurrencyLimit: mock(() => {}),
-    onTaskComplete: mock(() => {}),
+    cancel: vi.fn(() => Promise.resolve()),
+    getStatus: vi.fn(() => Promise.resolve(null)),
+    getOutput: vi.fn(() => Promise.resolve(null)),
+    listTasks: vi.fn(() => Promise.resolve([])),
+    getRunningCount: vi.fn(() => 0),
+    getConcurrencyLimit: vi.fn(() => 5),
+    setConcurrencyLimit: vi.fn(() => {}),
+    onTaskComplete: vi.fn(() => {}),
   } as unknown as BackgroundManager;
 }
 
@@ -61,9 +61,9 @@ describe("delegate-task", () => {
       expect(result.status).toBe("pending");
       expect(result.agent).toBe("punch");
       expect(result.timeout).toBe(DEFAULT_TIMEOUT_MINUTES);
-      expect(result.createdAt).toBeString();
+      expect(result.createdAt).toBeTypeOf("string");
       expect(result.summary).toContain("Task delegated");
-      expect(result.nextActions).toBeArray();
+      expect(result.nextActions).toBeInstanceOf(Array);
       expect(result.nextActions.length).toBeGreaterThan(0);
       expect(result.nextActions[0].tool).toBe("background-output");
       expect(result.nextActions[0].params.taskId).toBe(result.taskId);
@@ -95,12 +95,12 @@ describe("delegate-task", () => {
       expect(result.routing?.originalAgent).toBe("punch");
       expect(result.routing?.finalAgent).toBe("scout");
 
-      const promptCall = (ctx.client.session.prompt as ReturnType<typeof mock>).mock.calls[0];
+      const promptCall = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(promptCall[0].agent).toBe("scout");
       expect(promptCall[0].system).toContain("grep_app");
       expect(promptCall[0].system).toContain("compact findings");
 
-      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof mock>).mock.calls[0];
+      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(launchCall[0].agentName).toBe("scout");
       expect(launchCall[0].command).toContain("--agent 'scout'");
     });
@@ -150,7 +150,7 @@ describe("delegate-task", () => {
       await delegateTask(input, ctx);
 
       expect(ctx.client.session.prompt).toHaveBeenCalled();
-      const promptCall = (ctx.client.session.prompt as ReturnType<typeof mock>).mock.calls[0];
+      const promptCall = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(promptCall[0].system).toContain("PostgreSQL best practices");
     });
 
@@ -173,7 +173,7 @@ describe("delegate-task", () => {
       await delegateTask(input, ctx);
 
       expect(ctx.backgroundManager.launch).toHaveBeenCalled();
-      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof mock>).mock.calls[0];
+      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(launchCall[0].timeout).toBe(60);
     });
 
@@ -186,7 +186,7 @@ describe("delegate-task", () => {
 
       await delegateTask(input, ctx);
 
-      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof mock>).mock.calls[0];
+      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(launchCall[0].planId).toBe("plan-123");
       expect(launchCall[0].planTaskId).toBe("plan-task-456");
     });
@@ -199,7 +199,7 @@ describe("delegate-task", () => {
       await delegateTask(input, ctx);
 
       expect(ctx.client.session.create).toHaveBeenCalled();
-      const createCall = (ctx.client.session.create as ReturnType<typeof mock>).mock.calls[0];
+      const createCall = (ctx.client.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(createCall[0].parentID).toBe("parent_session_123");
     });
 
@@ -218,18 +218,18 @@ describe("delegate-task", () => {
     });
 
     it("should throw error when session creation fails", async () => {
-      ctx.client.session.create = mock(() => Promise.resolve({ data: undefined }));
+      ctx.client.session.create = vi.fn(() => Promise.resolve({ data: undefined }));
 
       const input: DelegateTaskInput = {
         task: "This should fail",
       };
 
-      expect(delegateTask(input, ctx)).rejects.toThrow("Failed to create child session");
+      await expect(delegateTask(input, ctx)).rejects.toThrow("Failed to create child session");
     });
 
     it("should not wait for task completion", async () => {
       let launchResolved = false;
-      ctx.backgroundManager.launch = mock(() =>
+      ctx.backgroundManager.launch = vi.fn(() =>
         new Promise<string>((resolve) => {
           setTimeout(() => {
             launchResolved = true;
@@ -257,7 +257,7 @@ describe("delegate-task", () => {
       await delegateTask(input, ctx);
 
       expect(ctx.client.session.create).toHaveBeenCalled();
-      const createCall = (ctx.client.session.create as ReturnType<typeof mock>).mock.calls[0];
+      const createCall = (ctx.client.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(createCall[0].title).toContain("Delegated:");
       expect(createCall[0].title.length).toBeLessThanOrEqual(64);
     });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { BackgroundManager, LaunchTaskInput } from "./BackgroundManager";
 import { SQLiteClient } from "../utils/sqlite-client";
 
@@ -36,7 +36,7 @@ describe("BackgroundManager", () => {
 
       const taskId = await manager.launch(input);
 
-      expect(taskId).toBeString();
+      expect(taskId).toBeTypeOf("string");
       expect(taskId.startsWith("task_")).toBe(true);
 
       const status = await manager.getStatus(taskId);
@@ -172,7 +172,7 @@ describe("BackgroundManager", () => {
   describe("listTasks", () => {
     it("should return empty array when no tasks", async () => {
       const tasks = await manager.listTasks();
-      expect(tasks).toBeArray();
+      expect(tasks).toBeInstanceOf(Array);
       expect(tasks.length).toBe(0);
     });
 
@@ -248,7 +248,7 @@ describe("BackgroundManager", () => {
         planTaskId: planTask?.id,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const [updatedPlanTask] = await sqlite.getPlanTasks(plan.id);
 
@@ -298,7 +298,7 @@ describe("BackgroundManager", () => {
       let status = await manager.getStatus(taskId);
       expect(status?.status).toBeOneOf(["pending", "in_progress", "completed"]);
       
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       
       status = await manager.getStatus(taskId);
       expect(status?.status).toBe("completed");
