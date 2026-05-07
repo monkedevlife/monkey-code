@@ -1,8 +1,7 @@
 import { join } from 'path';
 import { tool, type Plugin, type Config as OpenCodeConfig } from '@opencode-ai/plugin';
-import { readFileSync, existsSync } from 'fs';
 import { loadConfig, getConfigPaths, type Config as MonkeyConfig, type McpsConfig } from './config.js';
-import { createSQLiteClient, type SQLiteClient } from './utils/sqlite-client.js';
+import type { SQLiteClient } from './utils/sqlite-client.js';
 import { createBackgroundManager, type BackgroundManager, type BackgroundManagerConfig } from './managers/BackgroundManager.js';
 import { createInteractiveManager, type InteractiveManager } from './managers/InteractiveManager.js';
 import { createSkillMcpManager, type SkillMcpManager, type SkillMcpManagerOptions } from './managers/SkillMcpManager.js';
@@ -17,11 +16,10 @@ import { createPlanContinuationHook } from './hooks/plan-continuation.js';
 import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
 import { handleOpenSpecRead, handleOpenSpecWrite, handleOpenSpecList } from './tools/openspec.js';
+import { readBundledAgent, buildBundledAgentPermission } from './bundled-agents.js';
 
 const agents = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder', 'openspec-plan'] as const;
-const primaryAgents = new Set(['punch', 'harambe', 'caesar', 'george']);
 const schema = tool.schema;
-const pluginRoot = new URL('..', import.meta.url);
 
 type PluginState = {
   config?: MonkeyConfig;
@@ -37,15 +35,7 @@ const pluginState: PluginState = {
   isInitialized: false,
 };
 
-type BundledAgentDefinition = {
-  name: (typeof agents)[number];
-  description?: string;
-  model?: string;
-  prompt: string;
-  mode: 'primary' | 'subagent';
-  tools?: string[];
-  permission?: Record<string, unknown>;
-};
+let runtimeInitPromise: Promise<void> | undefined;
 
 function stringify(value: unknown) {
   return JSON.stringify(value, null, 2);
@@ -53,124 +43,6 @@ function stringify(value: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function parseInlineToolList(value: string | undefined) {
-  if (!value) return undefined;
-
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) return undefined;
-
-  const entries = trimmed
-    .slice(1, -1)
-    .split(',')
-    .map((entry) => entry.trim().replace(/^['"`]|['"`]$/g, ''))
-    .filter(Boolean);
-
-  return entries.length > 0 ? entries : undefined;
-}
-
-export function buildBundledAgentPermission(tools: string[] | undefined) {
-  if (!tools || tools.length === 0) return undefined;
-
-  const allowedPermissions = new Set<string>();
-  const normalizedTools = tools.map((toolName) => toolName.trim().toLowerCase());
-
-  for (const toolName of normalizedTools) {
-    if (!toolName) continue;
-
-    if (toolName === 'edit' || toolName === 'write' || toolName === 'apply_patch' || toolName === 'apply-patch') {
-      allowedPermissions.add('edit');
-      continue;
-    }
-
-    if (toolName === 'bash') {
-      allowedPermissions.add('bash');
-      continue;
-    }
-
-    if (toolName === 'question') {
-      allowedPermissions.add('question');
-      continue;
-    }
-
-    if (toolName === 'read' || toolName === 'glob' || toolName === 'grep' || toolName === 'webfetch' || toolName === 'websearch' || toolName === 'skill' || toolName === 'todowrite') {
-      allowedPermissions.add(toolName);
-      continue;
-    }
-
-    if (toolName === 'delegate-task' || toolName === 'delegate_task') {
-      allowedPermissions.add('delegate-task');
-      continue;
-    }
-
-    if (toolName === 'plan-write' || toolName === 'plan_write') {
-      allowedPermissions.add('plan-write');
-      continue;
-    }
-
-    if (toolName === 'plan-read' || toolName === 'plan_read') {
-      allowedPermissions.add('plan-read');
-      continue;
-    }
-
-  if (toolName === 'plan-list' || toolName === 'plan_list') {
-    allowedPermissions.add('plan-list');
-    continue;
-  }
-
-  if (toolName === 'plan-update-task' || toolName === 'plan_update_task') {
-    allowedPermissions.add('plan-update-task');
-    continue;
-  }
-
-    if (toolName === 'background-output' || toolName === 'background_output') {
-      allowedPermissions.add('background-output');
-      continue;
-    }
-
-    if (toolName === 'background-cancel' || toolName === 'background_cancel') {
-      allowedPermissions.add('background-cancel');
-      continue;
-    }
-
-    if (toolName === 'interactive-bash' || toolName === 'interactive_bash') {
-      allowedPermissions.add('interactive-bash');
-      continue;
-    }
-
-    if (toolName === 'skill-mcp' || toolName === 'skill_mcp') {
-      allowedPermissions.add('skill-mcp');
-      continue;
-    }
-
-    if (toolName === 'ast_grep_search' || toolName === 'ast-grep-search') {
-      allowedPermissions.add('ast_grep_search');
-      continue;
-    }
-
-    if (toolName === 'ast_grep_replace' || toolName === 'ast-grep-replace') {
-      allowedPermissions.add('ast_grep_replace');
-      continue;
-    }
-
-    if (toolName === 'websearch_web_search_exa' || toolName.startsWith('websearch_')) {
-      allowedPermissions.add('websearch');
-      continue;
-    }
-
-    if (toolName === 'lsp' || toolName.startsWith('lsp_') || toolName.startsWith('lsp-')) {
-      allowedPermissions.add('lsp');
-      continue;
-    }
-
-    allowedPermissions.add(toolName);
-  }
-
-  return {
-    '*': 'deny',
-    ...Object.fromEntries(Array.from(allowedPermissions).map((toolName) => [toolName, 'allow'])),
-  };
 }
 
 function mergeBundledPermission(
@@ -183,41 +55,6 @@ function mergeBundledPermission(
   return {
     ...bundledPermission,
     ...existingPermission,
-  };
-}
-
-export function readBundledAgent(name: typeof agents[number]): BundledAgentDefinition | undefined {
-  const file = new URL(`./agents/${name}.md`, pluginRoot);
-  if (!existsSync(file)) return undefined;
-
-  const content = readFileSync(file, 'utf-8');
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  if (!match) return undefined;
-
-  const frontmatter = match[1] ?? '';
-  const prompt = (match[2] ?? '').trim();
-  const meta = Object.fromEntries(
-    frontmatter
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const idx = line.indexOf(':');
-        if (idx === -1) return [line, ''];
-        return [line.slice(0, idx).trim(), line.slice(idx + 1).trim()];
-      }),
-  );
-
-  const tools = parseInlineToolList(meta.tools);
-
-  return {
-    name,
-    description: meta.description,
-    model: meta.model,
-    prompt,
-    mode: primaryAgents.has(name) ? 'primary' : 'subagent',
-    tools,
-    permission: buildBundledAgentPermission(tools),
   };
 }
 
@@ -326,6 +163,14 @@ function buildProjectPath(input: Parameters<Plugin>[0]) {
   return input.worktree ?? input.directory;
 }
 
+function ensureConfigLoaded(worktree: string) {
+  if (!pluginState.config) {
+    pluginState.config = loadConfig(worktree);
+  }
+
+  return pluginState.config;
+}
+
 function resolveAgentConfig(agentName?: string) {
   if (!pluginState.config?.agents || !agentName) return undefined;
   return pluginState.config.agents[agentName as keyof typeof pluginState.config.agents];
@@ -374,38 +219,55 @@ function createClientAdapter(input: Parameters<Plugin>[0]) {
 
 async function initializePlugin(input: Parameters<Plugin>[0]) {
   if (pluginState.isInitialized) return;
-
-  const config = loadConfig(input.worktree);
-  pluginState.config = config;
-
-  const paths = getConfigPaths(input.worktree);
-  const sqlite = createSQLiteClient(paths.dbPath);
-  await sqlite.initialize();
-  pluginState.sqlite = sqlite;
-
-  const backgroundConfig: BackgroundManagerConfig = {
-    concurrencyLimit: config.background?.maxConcurrent ?? 5,
-    pollIntervalMs: config.background?.pollInterval ?? 5000,
-  };
-  const backgroundManager = createBackgroundManager(sqlite, backgroundConfig);
-  await backgroundManager.initialize();
-  pluginState.backgroundManager = backgroundManager;
-
-  pluginState.interactiveManager = createInteractiveManager();
-
-  const skillMcpOptions: SkillMcpManagerOptions = {
-    builtinConfig: config.mcps as McpsConfig,
-  };
-  const skillMcpManager = createSkillMcpManager(skillMcpOptions);
-  try {
-    await skillMcpManager.initializeBuiltinMcps();
-  } catch (error) {
-    console.warn('[monkey-code] Failed to initialize some builtin MCPs:', error instanceof Error ? error.message : String(error));
+  if (runtimeInitPromise) {
+    await runtimeInitPromise;
+    return;
   }
-  pluginState.skillMcpManager = skillMcpManager;
 
-  pluginState.backgroundCancelTool = await createBackgroundCancelTool(backgroundManager, sqlite);
-  pluginState.isInitialized = true;
+  runtimeInitPromise = (async () => {
+    const config = ensureConfigLoaded(input.worktree);
+    const paths = getConfigPaths(input.worktree);
+    const { createSQLiteClient } = await import('./utils/sqlite-client.js');
+    const sqlite = createSQLiteClient(paths.dbPath);
+    const backgroundConfig: BackgroundManagerConfig = {
+      concurrencyLimit: config.background?.maxConcurrent ?? 5,
+      pollIntervalMs: config.background?.pollInterval ?? 5000,
+    };
+    const backgroundManager = createBackgroundManager(sqlite, backgroundConfig);
+    const interactiveManager = createInteractiveManager();
+    const skillMcpOptions: SkillMcpManagerOptions = {
+      builtinConfig: config.mcps as McpsConfig,
+    };
+    const skillMcpManager = createSkillMcpManager(skillMcpOptions);
+
+    try {
+      await sqlite.initialize();
+      await backgroundManager.initialize();
+      try {
+        await skillMcpManager.initializeBuiltinMcps();
+      } catch (error) {
+        console.warn('[monkey-code] Failed to initialize some builtin MCPs:', error instanceof Error ? error.message : String(error));
+      }
+
+      pluginState.sqlite = sqlite;
+      pluginState.backgroundManager = backgroundManager;
+      pluginState.interactiveManager = interactiveManager;
+      pluginState.skillMcpManager = skillMcpManager;
+      pluginState.backgroundCancelTool = await createBackgroundCancelTool(backgroundManager, sqlite);
+      pluginState.isInitialized = true;
+    } catch (error) {
+      await skillMcpManager.cleanup().catch(() => undefined);
+      await backgroundManager.shutdown().catch(() => undefined);
+      await sqlite.close().catch(() => undefined);
+      throw error;
+    }
+  })();
+
+  try {
+    await runtimeInitPromise;
+  } finally {
+    runtimeInitPromise = undefined;
+  }
 }
 
 async function shutdownPlugin() {
@@ -527,35 +389,7 @@ async function handlePlanUpdateTaskRequest(
 }
 
 export const server: Plugin = async (input) => {
-  await initializePlugin(input);
-  const startWorkHook = pluginState.sqlite
-    ? createStartWorkHook({
-        sqlite: pluginState.sqlite,
-        projectPath: buildProjectPath(input),
-        worktree: input.worktree,
-        defaultAgent: 'punch',
-      })
-    : null;
-  const planContinuationHook = pluginState.sqlite && pluginState.backgroundManager
-    ? createPlanContinuationHook({
-        sqlite: pluginState.sqlite,
-        backgroundManager: pluginState.backgroundManager,
-        client: createClientAdapter(input),
-        projectPath: buildProjectPath(input),
-        worktree: input.worktree,
-        defaultAgent: 'punch',
-        resolveAgentConfig,
-      })
-    : null;
-  const stopAllHook = pluginState.backgroundManager
-    ? createStopAllHook({
-        backgroundManager: pluginState.backgroundManager,
-        interactiveManager: pluginState.interactiveManager,
-        abortCurrentSession: async (sessionID: string) => {
-          await input.client.session.abort({ path: { id: sessionID } });
-        },
-      })
-    : null;
+  ensureConfigLoaded(input.worktree);
 
   return {
     config: async (config: OpenCodeConfig) => {
@@ -574,6 +408,7 @@ export const server: Plugin = async (input) => {
           planTaskId: schema.string().optional().describe('Optional plan task ID to associate the background task with'),
         },
         async execute(args, context) {
+          await initializePlugin(input);
           return stringify(await handleDelegateTaskRequest(args, context.sessionID, input));
         },
       }),
@@ -611,6 +446,7 @@ export const server: Plugin = async (input) => {
           ).optional().describe('Structured plan tasks'),
         },
         async execute(args, context) {
+          await initializePlugin(input);
           return stringify(await handlePlanWriteRequest(args as PlanWriteInput, context.sessionID, input));
         },
       }),
@@ -623,6 +459,7 @@ export const server: Plugin = async (input) => {
           status: schema.enum(['draft', 'active', 'blocked', 'completed', 'cancelled', 'superseded']).optional().describe('Optional status filter when reading latest plan'),
         },
         async execute(args) {
+          await initializePlugin(input);
           return stringify(await handlePlanReadRequest(args as PlanReadInput, input));
         },
       }),
@@ -635,6 +472,7 @@ export const server: Plugin = async (input) => {
           limit: schema.number().min(1).max(200).optional().describe('Maximum number of plans to return'),
         },
         async execute(args) {
+          await initializePlugin(input);
           return stringify(await handlePlanListRequest(args as PlanListInput, input));
         },
       }),
@@ -651,6 +489,7 @@ export const server: Plugin = async (input) => {
           eventPayload: schema.record(schema.string(), schema.unknown()).optional().describe('Optional plan event payload'),
         },
         async execute(args) {
+          await initializePlugin(input);
           return stringify(await handlePlanUpdateTaskRequest(args));
         },
       }),
@@ -662,6 +501,7 @@ export const server: Plugin = async (input) => {
           timeout: schema.number().optional().describe('Timeout in milliseconds when waiting'),
         },
         async execute(args) {
+          await initializePlugin(input);
           return stringify(await handleBackgroundOutputRequest(args));
         },
       }),
@@ -672,6 +512,7 @@ export const server: Plugin = async (input) => {
           all: schema.boolean().optional().describe('Cancel all cancellable tasks'),
         },
         async execute(args) {
+          await initializePlugin(input);
           if (!args.all && !args.taskId) {
             throw new Error('taskId is required unless all is true');
           }
@@ -695,6 +536,7 @@ export const server: Plugin = async (input) => {
           lines: schema.number().min(1).max(1000).optional().describe('Number of lines to capture'),
         },
         async execute(args, context) {
+          await initializePlugin(input);
           return stringify(
             await handleInteractiveBashRequest(
               {
@@ -719,6 +561,7 @@ export const server: Plugin = async (input) => {
           params: schema.record(schema.string(), schema.unknown()).optional().describe('Tool parameters'),
         },
         async execute(args) {
+          await initializePlugin(input);
           return stringify(await handleSkillMcpRequest(args, input.worktree));
         },
       }),
@@ -728,6 +571,7 @@ export const server: Plugin = async (input) => {
           file: schema.string().describe('Relative path to openspec file'),
         },
         async execute(args) {
+          await initializePlugin(input);
           return stringify(await handleOpenSpecRead(args, { sqlite: pluginState.sqlite!, worktree: input.worktree }));
         },
       }),
@@ -738,6 +582,7 @@ export const server: Plugin = async (input) => {
           content: schema.string().describe('File content'),
         },
         async execute(args) {
+          await initializePlugin(input);
           return stringify(await handleOpenSpecWrite(args, { sqlite: pluginState.sqlite!, worktree: input.worktree }));
         },
       }),
@@ -747,6 +592,7 @@ export const server: Plugin = async (input) => {
           directory: schema.string().optional().describe('Optional subdirectory filter'),
         },
         async execute(args) {
+          await initializePlugin(input);
           return stringify(await handleOpenSpecList(args, { sqlite: pluginState.sqlite!, worktree: input.worktree }));
         },
       }),
@@ -757,8 +603,25 @@ export const server: Plugin = async (input) => {
       }
 
       if (event.type === 'session.idle') {
+        try {
+          await initializePlugin(input);
+        } catch {
+          return;
+        }
+
         const sessionID = ((event as { properties?: Record<string, unknown> }).properties?.sessionID as string | undefined) ?? '';
         if (sessionID) {
+          const planContinuationHook = pluginState.sqlite && pluginState.backgroundManager
+            ? createPlanContinuationHook({
+                sqlite: pluginState.sqlite,
+                backgroundManager: pluginState.backgroundManager,
+                client: createClientAdapter(input),
+                projectPath: buildProjectPath(input),
+                worktree: input.worktree,
+                defaultAgent: 'punch',
+                resolveAgentConfig,
+              })
+            : null;
           await planContinuationHook?.continue({ sessionID });
         }
       }
@@ -767,6 +630,30 @@ export const server: Plugin = async (input) => {
       await handleChatParams(hookInput, output);
     },
     'chat.message': async (hookInput, output) => {
+      try {
+        await initializePlugin(input);
+      } catch {
+        return;
+      }
+
+      const startWorkHook = pluginState.sqlite
+        ? createStartWorkHook({
+            sqlite: pluginState.sqlite,
+            projectPath: buildProjectPath(input),
+            worktree: input.worktree,
+            defaultAgent: 'punch',
+          })
+        : null;
+      const stopAllHook = pluginState.backgroundManager
+        ? createStopAllHook({
+            backgroundManager: pluginState.backgroundManager,
+            interactiveManager: pluginState.interactiveManager,
+            abortCurrentSession: async (sessionID: string) => {
+              await input.client.session.abort({ path: { id: sessionID } });
+            },
+          })
+        : null;
+
       if (startWorkHook) {
         await startWorkHook['chat.message']?.(hookInput as { sessionID: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
@@ -777,9 +664,9 @@ export const server: Plugin = async (input) => {
   };
 };
 
-const plugin = {
+const plugin = Object.assign(server, {
   id: 'monkey-code',
   server,
-};
+});
 
 export default plugin;

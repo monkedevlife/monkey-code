@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import monkeyCodePlugin, { buildBundledAgentPermission, readBundledAgent } from './index';
+import monkeyCodePlugin from './index';
+import { buildBundledAgentPermission, readBundledAgent } from './bundled-agents';
 
 describe('Monkey Code Plugin', () => {
   it('exports a current opencode plugin module', () => {

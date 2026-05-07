@@ -19,6 +19,7 @@
     "@opencode-ai/plugin": "^1.14.24",
     "better-sqlite3": "^12.9.0",
     "js-yaml": "^4.1.0",
+    "tsx": "^4.0.0",
     "sqlite-vss": "^0.1.2",
     "zod": "^3.22.0"
   },
@@ -27,7 +28,6 @@
     "@types/js-yaml": "^4.0.5",
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
-    "tsx": "^4.0.0",
     "typescript": "^5.3.0",
     "vitest": "^3.0.0"
   },

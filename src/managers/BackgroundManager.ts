@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { text } from "node:stream/consumers";
-import { SQLiteClient } from "../utils/sqlite-client";
+import type { SQLiteClient } from "../utils/sqlite-client.js";
 import { BackgroundTask, Task, IBackgroundManager } from "../types";
 import { updatePlanTaskState } from "../tools/plan-store";
 

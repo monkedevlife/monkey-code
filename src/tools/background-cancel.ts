@@ -1,5 +1,5 @@
-import { BackgroundManager } from '../managers/BackgroundManager';
-import { SQLiteClient } from '../utils/sqlite-client';
+import type { BackgroundManager } from '../managers/BackgroundManager.js';
+import type { SQLiteClient } from '../utils/sqlite-client.js';
 
 export interface BackgroundCancelParams {
   taskId: string;
