@@ -35,20 +35,37 @@ export interface DelegateTaskOutput {
   }>;
 }
 
+export interface SessionPermissionRule {
+  permission: string;
+  action: "allow" | "deny";
+  pattern: string;
+}
+
+const SUBAGENT_PERMISSION: SessionPermissionRule[] = [
+  { permission: "question", action: "deny", pattern: "*" },
+];
+
 export interface OpenCodeClient {
   session: {
+    get?: (params: { path: { id: string }; query?: { directory?: string } }) => Promise<{ data?: { directory?: string } }>;
     create: (params: {
-      parentID?: string;
-      title?: string;
-      permission?: unknown;
-      workspaceID?: string;
+      body?: {
+        parentID?: string;
+        title?: string;
+        permission?: SessionPermissionRule[];
+      };
+      query?: { directory?: string };
     }) => Promise<{ data?: { id: string } }>;
     prompt: (params: {
-      sessionID: string;
-      agent?: string;
-      system?: string;
-      parts: Array<{ type: string; text: string }>;
-      noReply?: boolean;
+      path: { id: string };
+      body: {
+        agent?: string;
+        system?: string;
+        parts: Array<{ type: string; text: string }>;
+        noReply?: boolean;
+        tools?: Record<string, boolean>;
+        model?: { providerID: string; modelID: string };
+      };
     }) => Promise<{ data?: unknown }>;
   };
 }
@@ -166,9 +183,28 @@ export async function delegateTask(
   const agent = resolution.agent;
   const timeout = input.timeout ?? DEFAULT_TIMEOUT_MINUTES;
 
+  let parentDirectory = ctx.directory ?? ctx.worktree;
+  if (ctx.client.session.get && ctx.parentSessionId) {
+    try {
+      const parentSession = await ctx.client.session.get({
+        path: { id: ctx.parentSessionId },
+        query: { directory: parentDirectory },
+      });
+      if (parentSession?.data?.directory) {
+        parentDirectory = parentSession.data.directory;
+      }
+    } catch {
+      // fall back to ctx directory
+    }
+  }
+
   const createRes = await ctx.client.session.create({
-    parentID: ctx.parentSessionId,
-    title: `Delegated: ${input.task.slice(0, 50)}${input.task.length > 50 ? "..." : ""}`,
+    body: {
+      parentID: ctx.parentSessionId,
+      title: `Delegated: ${input.task.slice(0, 50)}${input.task.length > 50 ? "..." : ""}`,
+      permission: SUBAGENT_PERMISSION,
+    },
+    query: { directory: parentDirectory },
   });
 
   if (!createRes.data?.id) {
@@ -187,10 +223,18 @@ export async function delegateTask(
   const systemPrompt = buildSystemPrompt(input, agent === SCOUT_AGENT, resolution.routingReason);
 
   await ctx.client.session.prompt({
-    sessionID: sessionId,
-    agent,
-    system: systemPrompt,
-    parts: [{ type: "text", text: input.task }],
+    path: { id: sessionId },
+    body: {
+      agent,
+      system: systemPrompt,
+      parts: [{ type: "text", text: input.task }],
+      tools: {
+        "delegate-task": true,
+        "background-output": true,
+        "background-cancel": true,
+        "question": false,
+      },
+    },
   });
 
   return {

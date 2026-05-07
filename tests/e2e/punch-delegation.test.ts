@@ -416,7 +416,7 @@ This is the ${name} agent skill.
 
       expect(mockClient.session.create).toHaveBeenCalled();
       const createCall = (mockClient.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(createCall[0].parentID).toBe("main_session");
+      expect(createCall[0].body.parentID).toBe("main_session");
     });
 
     it("should pass context to Punch agent", async () => {
@@ -432,7 +432,7 @@ This is the ${name} agent skill.
 
       expect(mockClient.session.prompt).toHaveBeenCalled();
       const promptCall = (mockClient.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(promptCall[0].system).toContain("PR #123: Add new feature to dashboard");
+      expect(promptCall[0].body.system).toContain("PR #123: Add new feature to dashboard");
     });
 
     it("should delegate multiple tasks to Punch", async () => {

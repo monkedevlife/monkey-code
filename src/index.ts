@@ -204,38 +204,56 @@ function resolveAgentConfig(agentName?: string) {
 function createClientAdapter(input: Parameters<Plugin>[0]) {
   return {
     session: {
-      create: async (params: { parentID?: string; title?: string }) => {
+      get: input.client.session.get
+        ? async (params: { path: { id: string }; query?: { directory?: string } }) => {
+            const result = await input.client.session.get({
+              path: { id: params.path.id },
+              query: params.query,
+            });
+            return { data: result.data as { directory?: string } | undefined };
+          }
+        : undefined,
+      create: async (params: {
+        body?: { parentID?: string; title?: string; permission?: Array<{ permission: string; action: string; pattern: string }> };
+        query?: { directory?: string };
+      }) => {
         const result = await input.client.session.create({
           body: {
-            parentID: params.parentID,
-            title: params.title,
-          },
+            parentID: params.body?.parentID,
+            title: params.body?.title,
+            permission: params.body?.permission,
+          } as Record<string, unknown>,
+          query: params.query,
         });
-
         return {
           data: result.data ? { id: result.data.id } : undefined,
         };
       },
       prompt: async (params: {
-        sessionID: string;
-        agent?: string;
-        system?: string;
-        parts: Array<{ type: string; text: string }>;
-        noReply?: boolean;
+        path: { id: string };
+        body: {
+          agent?: string;
+          system?: string;
+          parts: Array<{ type: string; text: string }>;
+          noReply?: boolean;
+          tools?: Record<string, boolean>;
+          model?: { providerID: string; modelID: string };
+        };
       }) => {
         const result = await input.client.session.prompt({
-          path: { id: params.sessionID },
+          path: { id: params.path.id },
           body: {
-            agent: params.agent,
-            system: params.system,
-            noReply: params.noReply,
-            parts: params.parts.map((part) => ({
+            agent: params.body.agent,
+            system: params.body.system,
+            noReply: params.body.noReply,
+            parts: params.body.parts.map((part) => ({
               type: 'text' as const,
               text: part.text,
             })),
+            tools: params.body.tools,
+            model: params.body.model,
           },
         });
-
         return { data: result.data };
       },
     },

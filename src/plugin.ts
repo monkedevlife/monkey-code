@@ -116,6 +116,7 @@ async function shutdownPlugin(): Promise<void> {
 function createMockOpenCodeClient(): any {
   return {
     session: {
+      get: async () => ({ data: { directory: process.cwd() } }),
       create: async () => ({ data: { id: `mock-session-${Date.now()}` } }),
       prompt: async () => ({ data: {} })
     }

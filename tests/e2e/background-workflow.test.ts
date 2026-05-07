@@ -207,7 +207,7 @@ describe("E2E: Background Task Workflow", () => {
       });
 
       const createCall = (mockClient.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(createCall[0].parentID).toBe("parent_session_abc");
+      expect(createCall[0].body.parentID).toBe("parent_session_abc");
     });
 
     it("should pass context to background manager", async () => {
@@ -224,7 +224,7 @@ describe("E2E: Background Task Workflow", () => {
 
       expect(mockClient.session.prompt).toHaveBeenCalled();
       const promptCall = (mockClient.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(promptCall[0].system).toContain("Use PostgreSQL best practices");
+      expect(promptCall[0].body.system).toContain("Use PostgreSQL best practices");
     });
   });
 

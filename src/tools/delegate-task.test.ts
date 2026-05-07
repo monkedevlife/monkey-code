@@ -76,9 +76,9 @@ describe("delegate-task", () => {
       expect(result.routing?.finalAgent).toBe("scout");
 
       const promptCall = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(promptCall[0].agent).toBe("scout");
-      expect(promptCall[0].system).toContain("grep_app");
-      expect(promptCall[0].system).toContain("compact findings");
+      expect(promptCall[0].body.agent).toBe("scout");
+      expect(promptCall[0].body.system).toContain("grep_app");
+      expect(promptCall[0].body.system).toContain("compact findings");
     });
 
     it("should keep scout when exploratory task already targets scout", async () => {
@@ -126,8 +126,8 @@ describe("delegate-task", () => {
       await delegateTask(input, ctx);
 
       expect(ctx.client.session.prompt).toHaveBeenCalled();
-      const promptCall = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(promptCall[0].system).toContain("PostgreSQL best practices");
+      const promptCall2 = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(promptCall2[0].body.system).toContain("PostgreSQL best practices");
     });
 
     it("should use default timeout when not specified", async () => {
@@ -149,8 +149,8 @@ describe("delegate-task", () => {
       await delegateTask(input, ctx);
 
       expect(ctx.client.session.prompt).toHaveBeenCalled();
-      const promptCall = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(promptCall[0].noReply).toBeUndefined();
+      const promptCall3 = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(promptCall3[0].body.noReply).toBeUndefined();
     });
 
     it("should set parentSessionId on child session", async () => {
@@ -162,7 +162,7 @@ describe("delegate-task", () => {
 
       expect(ctx.client.session.create).toHaveBeenCalled();
       const createCall = (ctx.client.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(createCall[0].parentID).toBe("parent_session_123");
+      expect(createCall[0].body.parentID).toBe("parent_session_123");
     });
 
     it("should support all valid agents", async () => {
@@ -209,9 +209,9 @@ describe("delegate-task", () => {
       await delegateTask(input, ctx);
 
       expect(ctx.client.session.create).toHaveBeenCalled();
-      const createCall = (ctx.client.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(createCall[0].title).toContain("Delegated:");
-      expect(createCall[0].title.length).toBeLessThanOrEqual(64);
+      const createCall2 = (ctx.client.session.create as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(createCall2[0].body.title).toContain("Delegated:");
+      expect(createCall2[0].body.title.length).toBeLessThanOrEqual(64);
     });
 
     it("should handle tasks with special characters", async () => {
