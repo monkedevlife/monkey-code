@@ -1,5 +1,10 @@
 import type { Task } from '../types/index.js';
 import { BackgroundManager } from '../managers/BackgroundManager.js';
+import {
+  transcriptExists,
+  readTranscriptEntries,
+  formatTranscriptProgress,
+} from '../hooks/transcript.js';
 
 export interface BackgroundOutputParams {
   taskId: string;
@@ -18,6 +23,8 @@ export interface BackgroundOutputResult {
   waitTimeMs?: number;
   outputTruncated: boolean;
   outputLength: number;
+  progress?: string;
+  toolCallCount?: number;
   nextActions: Array<{
     action: string;
     description: string;
@@ -27,6 +34,16 @@ export interface BackgroundOutputResult {
 }
 
 const MAX_OUTPUT_LENGTH = 10000;
+const TRANSCRIPT_POLL_INTERVAL_MS = 1000;
+const TRANSCRIPT_IDLE_TIMEOUT_MS = 5000;
+
+function isRunning(status: string): boolean {
+  return status === 'pending' || status === 'in_progress';
+}
+
+function isTerminal(status: string): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
 
 export async function getBackgroundOutput(
   manager: BackgroundManager,
@@ -41,15 +58,21 @@ export async function getBackgroundOutput(
   const startTime = new Date().toISOString();
   const task = await manager.getStatus(taskId);
 
-  if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+  if (task) {
+    if (!wait || isTerminal(task.status)) {
+      return formatTaskResult(task, startTime, wait, 0);
+    }
+    return await waitForTaskCompletion(manager, taskId, startTime, timeout);
   }
 
-  if (!wait || task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
-    return formatTaskResult(task, startTime, wait, 0);
+  if (transcriptExists(taskId)) {
+    if (!wait) {
+      return formatTranscriptResult(taskId, startTime, false, 0);
+    }
+    return await waitForTranscriptActivity(taskId, startTime, timeout);
   }
 
-  return await waitForTaskCompletion(manager, taskId, startTime, timeout);
+  throw new Error(`Task not found: ${taskId}`);
 }
 
 async function waitForTaskCompletion(
@@ -69,7 +92,7 @@ async function waitForTaskCompletion(
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+    if (isTerminal(task.status)) {
       return formatTaskResult(task, startTime, true, Date.now() - waitStart);
     }
 
@@ -82,6 +105,77 @@ async function waitForTaskCompletion(
   }
 
   return formatTaskResult(task, startTime, true, Date.now() - waitStart);
+}
+
+async function waitForTranscriptActivity(
+  taskId: string,
+  startTime: string,
+  timeout: number,
+): Promise<BackgroundOutputResult> {
+  const waitStart = Date.now();
+  const endTime = waitStart + timeout;
+  let lastEntryCount = -1;
+  let idleSince = 0;
+
+  while (Date.now() < endTime) {
+    const entries = readTranscriptEntries(taskId);
+    const currentCount = entries.length;
+
+    if (currentCount !== lastEntryCount) {
+      lastEntryCount = currentCount;
+      idleSince = Date.now();
+    } else if (idleSince > 0 && Date.now() - idleSince >= TRANSCRIPT_IDLE_TIMEOUT_MS) {
+      return formatTranscriptResult(taskId, startTime, true, Date.now() - waitStart);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, TRANSCRIPT_POLL_INTERVAL_MS));
+  }
+
+  return formatTranscriptResult(taskId, startTime, true, Date.now() - waitStart);
+}
+
+function formatTranscriptResult(
+  taskId: string,
+  startTime: string,
+  waited: boolean,
+  waitTimeMs: number,
+): BackgroundOutputResult {
+  const entries = readTranscriptEntries(taskId);
+  const progress = formatTranscriptProgress(entries);
+
+  const status: BackgroundOutputResult['status'] =
+    entries.length > 0 ? 'in_progress' : 'pending';
+
+  const output = progress || undefined;
+
+  const nextActions: BackgroundOutputResult['nextActions'] = [];
+
+  nextActions.push({
+    action: 'poll-again',
+    description: 'Check task progress again',
+    tool: 'background-output',
+    params: { taskId },
+  });
+  nextActions.push({
+    action: 'cancel',
+    description: 'Cancel the running task',
+    tool: 'background-cancel',
+    params: { taskId },
+  });
+
+  return {
+    taskId,
+    status,
+    output,
+    startTime,
+    waited,
+    waitTimeMs: waited ? waitTimeMs : undefined,
+    outputTruncated: (output?.length ?? 0) > MAX_OUTPUT_LENGTH,
+    outputLength: output?.length ?? 0,
+    progress,
+    toolCallCount: entries.length,
+    nextActions,
+  };
 }
 
 function formatTaskResult(
@@ -97,7 +191,7 @@ function formatTaskResult(
 
   const nextActions: BackgroundOutputResult['nextActions'] = [];
 
-  if (task.status === 'pending' || task.status === 'in_progress') {
+  if (isRunning(task.status)) {
     nextActions.push({
       action: 'poll-again',
       description: 'Check task progress again',
@@ -119,9 +213,17 @@ function formatTaskResult(
     });
   }
 
+  let progress: string | undefined;
+  if (isRunning(task.status) && task.id) {
+    if (transcriptExists(task.id)) {
+      const entries = readTranscriptEntries(task.id);
+      progress = formatTranscriptProgress(entries);
+    }
+  }
+
   return {
     taskId: task.id,
-    status: task.status,
+    status: task.status as BackgroundOutputResult['status'],
     output: output || undefined,
     error: task.error,
     startTime,
@@ -130,6 +232,8 @@ function formatTaskResult(
     waitTimeMs: waited ? waitTimeMs : undefined,
     outputTruncated,
     outputLength: rawOutput.length,
+    progress,
+    toolCallCount: progress ? readTranscriptEntries(task.id).length : undefined,
     nextActions
   };
 }

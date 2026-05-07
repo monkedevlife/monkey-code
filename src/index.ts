@@ -1,6 +1,7 @@
 import { join } from 'path';
 import { tool, type Plugin, type Config as OpenCodeConfig } from '@opencode-ai/plugin';
 import { loadConfig, getConfigPaths, type Config as MonkeyConfig, type McpsConfig } from './config.js';
+import type { CavemanRuntimeState } from './types/index.js';
 import type { SQLiteClient } from './utils/sqlite-client.js';
 import { createBackgroundManager, type BackgroundManager, type BackgroundManagerConfig } from './managers/BackgroundManager.js';
 import { createInteractiveManager, type InteractiveManager } from './managers/InteractiveManager.js';
@@ -16,11 +17,14 @@ import { createPlanContinuationHook } from './hooks/plan-continuation.js';
 import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
 import { createReviewPlanHook } from './hooks/review-plan.js';
+import { createToolTranscriptHook } from './hooks/tool-transcript-hook.js';
 import { handleOpenSpecRead, handleOpenSpecWrite, handleOpenSpecList } from './tools/openspec.js';
 import { readBundledAgent, buildBundledAgentPermission } from './bundled-agents.js';
+import { getCavemanInstructions, type CavemanLevel, CAVEMAN_LEVELS } from './caveman.js';
 
 const agents = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder', 'openspec-plan'] as const;
 const schema = tool.schema;
+const transcriptHook = createToolTranscriptHook();
 
 type PluginState = {
   config?: MonkeyConfig;
@@ -29,6 +33,7 @@ type PluginState = {
   interactiveManager?: InteractiveManager;
   skillMcpManager?: SkillMcpManager;
   backgroundCancelTool?: Awaited<ReturnType<typeof createBackgroundCancelTool>>;
+  cavemanRuntime?: CavemanRuntimeState;
   isInitialized: boolean;
 };
 
@@ -86,10 +91,18 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
         : {};
 
     const configured = resolveAgentConfig(name);
+    // Caveman prompt injection (runtime override beats config)
+    const isCavemanActive = pluginState.cavemanRuntime?.active ?? pluginState.config?.caveman?.enabled ?? false;
+    const cavemanIntensity = pluginState.cavemanRuntime?.intensity ?? pluginState.config?.caveman?.intensity ?? 'full';
+    let agentPrompt = bundled.prompt ?? '';
+    if (isCavemanActive) {
+      const cavemanBlock = getCavemanInstructions(cavemanIntensity as CavemanLevel);
+      agentPrompt = cavemanBlock + '\n\n' + agentPrompt;
+    }
     agentConfig[name] = {
       ...existing,
       ...(bundled.description ? { description: bundled.description } : {}),
-      ...(bundled.prompt ? { prompt: bundled.prompt } : {}),
+      ...(agentPrompt ? { prompt: agentPrompt } : {}),
       ...(bundled.model ? { model: bundled.model } : {}),
       ...(configured?.model ? { model: configured.model } : {}),
       ...(configured?.temperature !== undefined ? { temperature: configured.temperature } : {}),
@@ -644,6 +657,42 @@ export const server: Plugin = async (input) => {
         return;
       }
 
+      const messageText = (hookInput as { parts?: Array<{ type: string; text?: string }> }).parts
+        ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map(p => p.text)
+        .join(' ') ?? '';
+      const textLower = messageText.toLowerCase().trim();
+      const outputParts = (output as { parts: Array<{ type: string; text?: string }> }).parts;
+      const cavemanSlashMatch = textLower.match(/^\/caveman(?:\s+(lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|wenyan|stop|off))?$/);
+      const cavemanNaturalOff = /^(stop caveman|deactivate caveman|normal mode|disable caveman)\b/.test(textLower);
+      const cavemanNaturalOn = /^(activate caveman|turn on caveman)\b/.test(textLower);
+      const defaultIntensity = pluginState.config?.caveman?.intensity ?? 'full';
+
+      if (cavemanSlashMatch) {
+        const intensity = cavemanSlashMatch[1];
+        if (intensity === 'stop' || intensity === 'off') {
+          pluginState.cavemanRuntime = undefined;
+          outputParts.push({ type: 'text', text: '🦣 Caveman mode disabled.' });
+        } else if (intensity === 'wenyan') {
+          pluginState.cavemanRuntime = { active: true, intensity: 'wenyan-full' };
+          outputParts.push({ type: 'text', text: '🦣 Caveman mode activated: wenyan-full' });
+        } else if (!intensity) {
+          pluginState.cavemanRuntime = { active: true, intensity: defaultIntensity };
+          outputParts.push({ type: 'text', text: `🦣 Caveman mode activated: ${defaultIntensity}` });
+        } else if (CAVEMAN_LEVELS.includes(intensity as CavemanLevel)) {
+          pluginState.cavemanRuntime = { active: true, intensity: intensity as CavemanLevel };
+          outputParts.push({ type: 'text', text: `🦣 Caveman mode activated: ${intensity}` });
+        } else {
+          outputParts.push({ type: 'text', text: `Unknown caveman level: ${intensity}. Valid: ${CAVEMAN_LEVELS.join(', ')}, stop, off` });
+        }
+      } else if (cavemanNaturalOff) {
+        pluginState.cavemanRuntime = undefined;
+        outputParts.push({ type: 'text', text: '🦣 Caveman mode disabled.' });
+      } else if (cavemanNaturalOn) {
+        pluginState.cavemanRuntime = { active: true, intensity: defaultIntensity };
+        outputParts.push({ type: 'text', text: `🦣 Caveman mode activated: ${defaultIntensity}` });
+      }
+
       const startWorkHook = pluginState.sqlite
         ? createStartWorkHook({
             sqlite: pluginState.sqlite,
@@ -719,7 +768,10 @@ export const server: Plugin = async (input) => {
         await reviewPlanHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
     },
+    'tool.execute.before': transcriptHook['tool.execute.before'],
     'tool.execute.after': async (hookInput, output) => {
+      await transcriptHook['tool.execute.after'](hookInput, output).catch(() => {});
+
       if (hookInput.tool !== 'plan-write') return;
 
       try {
