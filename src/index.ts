@@ -661,6 +661,38 @@ export const server: Plugin = async (input) => {
         await stopAllHook['chat.message']?.(hookInput as { sessionID: string; client?: { session?: { abort?: (params: unknown) => Promise<unknown> } } }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
     },
+    'command.execute.before': async (hookInput, output) => {
+      try {
+        await initializePlugin(input);
+      } catch {
+        return;
+      }
+
+      const startWorkHook = pluginState.sqlite
+        ? createStartWorkHook({
+            sqlite: pluginState.sqlite,
+            projectPath: buildProjectPath(input),
+            worktree: input.worktree,
+            defaultAgent: 'punch',
+          })
+        : null;
+      const stopAllHook = pluginState.backgroundManager
+        ? createStopAllHook({
+            backgroundManager: pluginState.backgroundManager,
+            interactiveManager: pluginState.interactiveManager,
+            abortCurrentSession: async (sessionID: string) => {
+              await input.client.session.abort({ path: { id: sessionID } });
+            },
+          })
+        : null;
+
+      if (startWorkHook) {
+        await startWorkHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
+      }
+      if (stopAllHook) {
+        await stopAllHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
+      }
+    },
   };
 };
 
