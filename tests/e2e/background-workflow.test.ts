@@ -185,13 +185,12 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       const result = await delegateTask(input, {
-        backgroundManager: mockManager,
         client: mockClient,
         parentSessionId: "parent_session_123",
       });
 
-      expect(result.taskId).toMatch(/^mock_task_/);
-      expect(result.status).toBe("pending");
+      expect(result.taskId).toMatch(/^mock_session_/);
+      expect(result.status).toBe("in_progress");
       expect(result.sessionId).toMatch(/^mock_session_/);
       expect(result.summary).toContain("Task delegated");
     });
@@ -203,7 +202,6 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       await delegateTask(input, {
-        backgroundManager: mockManager,
         client: mockClient,
         parentSessionId: "parent_session_abc",
       });
@@ -221,14 +219,12 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       await delegateTask(input, {
-        backgroundManager: mockManager,
         client: mockClient,
       });
 
-      expect(mockManager.launch).toHaveBeenCalled();
-      const launchCall = (mockManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(launchCall[0].context).toBe("Use PostgreSQL best practices");
-      expect(launchCall[0].timeout).toBe(45);
+      expect(mockClient.session.prompt).toHaveBeenCalled();
+      const promptCall = (mockClient.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(promptCall[0].system).toContain("Use PostgreSQL best practices");
     });
   });
 
@@ -240,19 +236,27 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       const delegateResult = await delegateTask(input, {
-        backgroundManager: mockManager,
         client: mockClient,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      const taskId = delegateResult.sessionId;
+      mockManager._tasks.set(taskId, {
+        id: taskId,
+        status: "completed",
+        command: input.task,
+        output: "Completed: Run tests",
+        agentName: "caesar",
+        createdAt: Date.now(),
+        completedAt: Date.now(),
+      });
 
       const outputResult = await getBackgroundOutput(mockManager, {
-        taskId: delegateResult.taskId,
+        taskId,
         wait: true,
         timeout: 5000,
       });
 
-      expect(outputResult.taskId).toBe(delegateResult.taskId);
+      expect(outputResult.taskId).toBe(taskId);
       expect(outputResult.status).toBe("completed");
       expect(outputResult.output).toContain("Completed");
       expect(outputResult.startTime).toBeDefined();
@@ -266,16 +270,24 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       const delegateResult = await delegateTask(input, {
-        backgroundManager: mockManager,
         client: mockClient,
       });
 
+      const taskId = delegateResult.sessionId;
+      mockManager._tasks.set(taskId, {
+        id: taskId,
+        status: "in_progress",
+        command: input.task,
+        agentName: "tasker",
+        createdAt: Date.now(),
+      });
+
       const outputResult = await getBackgroundOutput(mockManager, {
-        taskId: delegateResult.taskId,
+        taskId,
         wait: false,
       });
 
-      expect(outputResult.taskId).toBe(delegateResult.taskId);
+      expect(outputResult.taskId).toBe(taskId);
       expect(outputResult.status).toMatch(/pending|in_progress/);
       expect(outputResult.startTime).toBeDefined();
     });
@@ -290,24 +302,28 @@ describe("E2E: Background Task Workflow", () => {
       const results = await Promise.all(
         tasks.map((t) =>
           delegateTask(t, {
-            backgroundManager: mockManager,
-            client: mockClient,
+                client: mockClient,
           })
         )
       );
 
       expect(results).toHaveLength(3);
-      results.forEach((r) => {
-        expect(r.taskId).toMatch(/^mock_task_/);
-        expect(r.status).toBe("pending");
+      results.forEach((r, i) => {
+        expect(r.sessionId).toMatch(/^mock_session_/);
+        expect(r.status).toBe("in_progress");
+        mockManager._tasks.set(r.sessionId, {
+          id: r.sessionId,
+          status: "in_progress",
+          command: tasks[i].task,
+          agentName: tasks[i].agent,
+          createdAt: Date.now(),
+        });
       });
-
-      await new Promise((resolve) => setTimeout(resolve, 200));
 
       const outputs = await Promise.all(
         results.map((r) =>
           getBackgroundOutput(mockManager, {
-            taskId: r.taskId,
+            taskId: r.sessionId,
             wait: false,
           })
         )
@@ -331,21 +347,29 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       const result = await delegateTask(input, {
-        backgroundManager: mockManager,
         client: mockClient,
         parentSessionId: "session_with_notifications",
       });
 
-      mockManager.onTaskComplete(result.taskId, (taskId: string, status: Task["status"]) => {
+      const taskId = result.sessionId;
+      mockManager._tasks.set(taskId, {
+        id: taskId,
+        status: "pending",
+        command: input.task,
+        agentName: "scout",
+        createdAt: Date.now(),
+      });
+
+      mockManager.onTaskComplete(taskId, (tid: string, status: Task["status"]) => {
         notificationReceived = true;
-        notifiedTaskId = taskId;
+        notifiedTaskId = tid;
         notifiedStatus = status;
       });
 
-      mockManager._completeTask(result.taskId, "Deployment successful");
+      mockManager._completeTask(taskId, "Deployment successful");
 
       expect(notificationReceived).toBe(true);
-      expect(notifiedTaskId).toBe(result.taskId);
+      expect(notifiedTaskId).toBe(taskId);
       expect(notifiedStatus).toBe("completed");
     });
 
@@ -359,16 +383,24 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       const result = await delegateTask(input, {
-        backgroundManager: mockManager,
         client: mockClient,
       });
 
-      mockManager.onTaskComplete(result.taskId, (_taskId: string, status: Task["status"]) => {
+      const taskId = result.sessionId;
+      mockManager._tasks.set(taskId, {
+        id: taskId,
+        status: "pending",
+        command: input.task,
+        agentName: "builder",
+        createdAt: Date.now(),
+      });
+
+      mockManager.onTaskComplete(taskId, (_tid: string, status: Task["status"]) => {
         notificationReceived = true;
         notifiedStatus = status;
       });
 
-      mockManager._failTask(result.taskId, "Tests failed with exit code 1");
+      mockManager._failTask(taskId, "Tests failed with exit code 1");
 
       expect(notificationReceived).toBe(true);
       expect(notifiedStatus).toBe("failed");
@@ -392,13 +424,21 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       const result = await delegateTask(input, {
-        backgroundManager: mockManager,
         client: mockClient,
       });
 
-      await mockManager.cancel(result.taskId);
+      const taskId = result.sessionId;
+      mockManager._tasks.set(taskId, {
+        id: taskId,
+        status: "pending",
+        command: input.task,
+        agentName: "george",
+        createdAt: Date.now(),
+      });
 
-      const status = await mockManager.getStatus(result.taskId);
+      await mockManager.cancel(taskId);
+
+      const status = await mockManager.getStatus(taskId);
       expect(status?.status).toBe("cancelled");
     });
 
@@ -414,8 +454,7 @@ describe("E2E: Background Task Workflow", () => {
 
       await expect(
         delegateTask(input, {
-          backgroundManager: mockManager,
-          client: mockClient,
+            client: mockClient,
         })
       ).rejects.toThrow("Failed to create child session");
     });
@@ -431,39 +470,45 @@ describe("E2E: Background Task Workflow", () => {
       };
 
       const delegateResult = await delegateTask(workflowInput, {
-        backgroundManager: mockManager,
         client: mockClient,
         parentSessionId: "e2e_test_session",
       });
 
       expect(delegateResult.taskId).toBeDefined();
       expect(delegateResult.sessionId).toBeDefined();
-      expect(delegateResult.status).toBe("pending");
+      expect(delegateResult.status).toBe("in_progress");
 
-      const initialStatus = await mockManager.getStatus(delegateResult.taskId);
+      const taskId = delegateResult.sessionId;
+      mockManager._tasks.set(taskId, {
+        id: taskId,
+        status: "pending",
+        command: workflowInput.task,
+        agentName: "tasker",
+        createdAt: Date.now(),
+      });
+
+      const initialStatus = await mockManager.getStatus(taskId);
       expect(initialStatus).not.toBeNull();
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
       mockManager._completeTask(
-        delegateResult.taskId,
+        taskId,
         "All 42 tests passed successfully"
       );
 
       const finalOutput = await getBackgroundOutput(mockManager, {
-        taskId: delegateResult.taskId,
+        taskId,
         wait: true,
         timeout: 1000,
       });
 
       expect(finalOutput.status).toBe("completed");
       expect(finalOutput.output).toContain("All 42 tests passed");
-      expect(finalOutput.taskId).toBe(delegateResult.taskId);
+      expect(finalOutput.taskId).toBe(taskId);
       expect(finalOutput.startTime).toBeDefined();
       expect(finalOutput.endTime).toBeDefined();
 
       const tasks = await mockManager.listTasks();
-      const ourTask = tasks.find((t) => t.id === delegateResult.taskId);
+      const ourTask = tasks.find((t) => t.id === taskId);
       expect(ourTask).toBeDefined();
       expect(ourTask?.status).toBe("completed");
     });

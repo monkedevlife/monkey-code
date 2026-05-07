@@ -312,10 +312,7 @@ async function shutdownPlugin() {
 }
 
 async function handleDelegateTaskRequest(args: DelegateTaskInput, sessionID: string, input: Parameters<Plugin>[0]) {
-  if (!pluginState.backgroundManager) throw new Error('Plugin not initialized');
-
   return delegateTask(args, {
-    backgroundManager: pluginState.backgroundManager,
     client: createClientAdapter(input),
     parentSessionId: sessionID,
     agentConfig: resolveAgentConfig(args.agent ?? 'punch'),
@@ -614,7 +611,7 @@ export const server: Plugin = async (input) => {
         await shutdownPlugin();
       }
 
-      if (event.type === 'session.idle') {
+        if (event.type === 'session.idle') {
         try {
           await initializePlugin(input);
         } catch {
@@ -623,10 +620,9 @@ export const server: Plugin = async (input) => {
 
         const sessionID = ((event as { properties?: Record<string, unknown> }).properties?.sessionID as string | undefined) ?? '';
         if (sessionID) {
-          const planContinuationHook = pluginState.sqlite && pluginState.backgroundManager
+          const planContinuationHook = pluginState.sqlite
             ? createPlanContinuationHook({
                 sqlite: pluginState.sqlite,
-                backgroundManager: pluginState.backgroundManager,
                 client: createClientAdapter(input),
                 projectPath: buildProjectPath(input),
                 worktree: input.worktree,

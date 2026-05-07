@@ -123,11 +123,10 @@ function createMockOpenCodeClient(): any {
 }
 
 function createPlanContinuationRunner(projectPath: string) {
-  if (!pluginState.sqlite || !pluginState.backgroundManager) return null;
+  if (!pluginState.sqlite) return null;
 
   return createPlanContinuationHook({
     sqlite: pluginState.sqlite,
-    backgroundManager: pluginState.backgroundManager,
     client: createMockOpenCodeClient(),
     projectPath,
     worktree: projectPath,
@@ -142,7 +141,7 @@ function resolveAgentConfig(agentName?: string) {
 }
 
 async function handleDelegateTask(params: Record<string, unknown>): Promise<DelegateTaskOutput> {
-  if (!pluginState.isInitialized || !pluginState.backgroundManager) {
+  if (!pluginState.isInitialized) {
     throw new Error('Plugin not initialized');
   }
 
@@ -157,7 +156,6 @@ async function handleDelegateTask(params: Record<string, unknown>): Promise<Dele
 
   const client = createMockOpenCodeClient();
   const ctx = {
-    backgroundManager: pluginState.backgroundManager,
     client,
     parentSessionId: pluginState.currentSessionId,
     agentConfig: resolveAgentConfig(input.agent ?? 'punch'),
@@ -467,7 +465,7 @@ export function createPlugin(): MonkeyCodePlugin {
           }
           break;
         case 'task:complete':
-          if (pluginState.sqlite && pluginState.backgroundManager && pluginState.currentSessionId) {
+          if (pluginState.sqlite && pluginState.currentSessionId) {
             const continuation = createPlanContinuationRunner(process.cwd());
             await continuation?.continue({ sessionID: pluginState.currentSessionId });
             const taskId = event.data?.taskId as string | undefined;

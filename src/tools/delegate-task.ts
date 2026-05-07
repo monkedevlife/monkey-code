@@ -1,4 +1,3 @@
-import type { BackgroundManager } from "../managers/BackgroundManager.js";
 import type { AgentConfig } from "../config.js";
 import {
   setSessionPromptParams,
@@ -55,7 +54,6 @@ export interface OpenCodeClient {
 }
 
 export interface DelegateTaskContext {
-  backgroundManager: BackgroundManager;
   client: OpenCodeClient;
   parentSessionId?: string;
   agentConfig?: AgentConfig;
@@ -160,29 +158,6 @@ function buildSystemPrompt(input: DelegateTaskInput, routedToScout: boolean, rou
   return `${basePrompt}\n\nScout execution policy:\n- Prefer the grep_app skill/MCP path first for repo discovery when available.\n- Return compact findings with relevant files, matched patterns, and only the minimum context the main agent needs.\n- Do not expand into implementation work unless explicitly asked.\n\nRouting reason: ${routingReason}`;
 }
 
-function quote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function buildCommand(task: string, agent: string, context?: string, directory?: string, systemPrompt?: string): string {
-  let message = context
-    ? `Task: ${task}\n\nAdditional Context:\n${context}`
-    : task;
-
-  if (systemPrompt) {
-    message = `${systemPrompt}\n\n---\n\n${message}`;
-  }
-
-  return [
-    'opencode run',
-    `--agent ${quote(agent)}`,
-    directory ? `--dir ${quote(directory)}` : '',
-    quote(message),
-  ]
-    .filter(Boolean)
-    .join(' ');
-}
-
 export async function delegateTask(
   input: DelegateTaskInput,
   ctx: DelegateTaskContext
@@ -216,24 +191,12 @@ export async function delegateTask(
     agent,
     system: systemPrompt,
     parts: [{ type: "text", text: input.task }],
-    noReply: true,
-  });
-
-  const command = buildCommand(input.task, agent, input.context, ctx.worktree ?? ctx.directory, systemPrompt);
-  const taskId = await ctx.backgroundManager.launch({
-    command,
-    agentName: agent,
-    context: input.context,
-    timeout,
-    parentSessionId: ctx.parentSessionId,
-    planId: input.planId,
-    planTaskId: input.planTaskId,
   });
 
   return {
-    taskId,
+    taskId: sessionId,
     sessionId,
-    status: "pending",
+    status: "in_progress",
     agent,
     requestedAgent: resolution.requestedAgent !== agent ? resolution.requestedAgent : undefined,
     timeout,
@@ -251,15 +214,15 @@ export async function delegateTask(
     nextActions: [
       {
         action: "check-status",
-        description: "Check task progress and output",
+        description: "Check task progress via session polling",
         tool: "background-output",
-        params: { taskId }
+        params: { taskId: sessionId }
       },
       {
         action: "cancel",
-        description: "Cancel the task if no longer needed",
+        description: "Abort the session if no longer needed",
         tool: "background-cancel",
-        params: { taskId }
+        params: { taskId: sessionId }
       }
     ]
   };

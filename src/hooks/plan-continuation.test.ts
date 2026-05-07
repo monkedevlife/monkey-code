@@ -1,32 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SQLiteClient } from "../utils/sqlite-client.js";
-import { BackgroundManager } from "../managers/BackgroundManager.js";
 import { writePlan } from "../tools/plan-store.js";
 import { continueActivePlan } from "./plan-continuation.js";
 
 describe("plan-continuation hook", () => {
   let sqlite: SQLiteClient;
-  let backgroundManager: BackgroundManager;
 
   beforeEach(async () => {
     sqlite = new SQLiteClient(":memory:");
     await sqlite.initialize();
-    backgroundManager = {
-      launch: vi.fn(() => Promise.resolve("task-123")),
-      cancel: vi.fn(() => Promise.resolve()),
-      getStatus: vi.fn(() => Promise.resolve(null)),
-      getOutput: vi.fn(() => Promise.resolve(null)),
-      listTasks: vi.fn(() => Promise.resolve([])),
-      getRunningCount: vi.fn(() => 0),
-      getConcurrencyLimit: vi.fn(() => 5),
-      setConcurrencyLimit: vi.fn(() => {}),
-      onTaskComplete: vi.fn(() => {}),
-    } as unknown as BackgroundManager;
   });
 
   afterEach(async () => {
     await sqlite.close();
   });
+
+  function createMockClient() {
+    return {
+      session: {
+        create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
+        prompt: vi.fn(() => Promise.resolve({ data: {} })),
+      },
+    };
+  }
 
   it("delegates the next runnable plan task on continuation", async () => {
     await writePlan(sqlite, {
@@ -43,17 +39,11 @@ describe("plan-continuation hook", () => {
       ],
     });
 
-    const client = {
-      session: {
-        create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
-        prompt: vi.fn(() => Promise.resolve({ data: {} })),
-      },
-    };
+    const client = createMockClient();
 
     const result = await continueActivePlan(
       {
         sqlite,
-        backgroundManager,
         client,
         projectPath: "/tmp/project-loop",
         worktree: "/tmp/project-loop",
@@ -64,7 +54,7 @@ describe("plan-continuation hook", () => {
 
     expect(result?.task.task_number).toBe("2");
     expect(client.session.create).toHaveBeenCalled();
-    expect(backgroundManager.launch).toHaveBeenCalled();
+    expect(client.session.prompt).toHaveBeenCalled();
 
     const planTasks = await sqlite.getPlanTasks(result?.plan.id as string);
     expect(planTasks.find((task) => task.task_number === "2")?.status).toBe("in_progress");
@@ -74,13 +64,7 @@ describe("plan-continuation hook", () => {
     const result = await continueActivePlan(
       {
         sqlite,
-        backgroundManager,
-        client: {
-          session: {
-            create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
-            prompt: vi.fn(() => Promise.resolve({ data: {} })),
-          },
-        },
+        client: createMockClient(),
         projectPath: "/tmp/none",
         defaultAgent: "punch",
       },
@@ -105,17 +89,11 @@ describe("plan-continuation hook", () => {
       ],
     });
 
-    const client = {
-      session: {
-        create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
-        prompt: vi.fn(() => Promise.resolve({ data: {} })),
-      },
-    };
+    const client = createMockClient();
 
     const result = await continueActivePlan(
       {
         sqlite,
-        backgroundManager,
         client,
         projectPath: "/tmp/project-busy",
         worktree: "/tmp/project-busy",
@@ -126,7 +104,7 @@ describe("plan-continuation hook", () => {
 
     expect(result).toBeNull();
     expect(client.session.create).not.toHaveBeenCalled();
-    expect(backgroundManager.launch).not.toHaveBeenCalled();
+    expect(client.session.prompt).not.toHaveBeenCalled();
   });
 
   it("prevents double dispatch under concurrent continuation calls", async () => {
@@ -141,18 +119,12 @@ describe("plan-continuation hook", () => {
       tasks: [{ taskNumber: "1", title: "Only once" }],
     });
 
-    const client = {
-      session: {
-        create: vi.fn(() => Promise.resolve({ data: { id: "session-child" } })),
-        prompt: vi.fn(() => Promise.resolve({ data: {} })),
-      },
-    };
+    const client = createMockClient();
 
     const [first, second] = await Promise.all([
       continueActivePlan(
         {
           sqlite,
-          backgroundManager,
           client,
           projectPath: "/tmp/project-lock",
           worktree: "/tmp/project-lock",
@@ -163,7 +135,6 @@ describe("plan-continuation hook", () => {
       continueActivePlan(
         {
           sqlite,
-          backgroundManager,
           client,
           projectPath: "/tmp/project-lock",
           worktree: "/tmp/project-lock",
@@ -174,6 +145,6 @@ describe("plan-continuation hook", () => {
     ]);
 
     expect([first, second].filter(Boolean).length).toBe(1);
-    expect(backgroundManager.launch).toHaveBeenCalledTimes(1);
+    expect(client.session.prompt).toHaveBeenCalledTimes(1);
   });
 });

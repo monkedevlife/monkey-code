@@ -121,7 +121,7 @@ describe('Monkey Code Plugin', () => {
       expect(typeof result).toBe('object');
       expect((result as any).taskId).toBeDefined();
       expect((result as any).sessionId).toBeDefined();
-      expect((result as any).status).toBe('pending');
+      expect((result as any).status).toBe('in_progress');
     });
 
     it('delegate-task throws when plugin not initialized', async () => {
@@ -330,17 +330,15 @@ describe('Monkey Code Plugin', () => {
 
       await plugin.hooks.onConfig?.(mockContext);
 
-      const delegateContext: ToolContext = {
-        toolName: 'delegate-task',
-        params: { task: 'test task description' }
-      };
-      const delegateResult = await plugin.hooks.onTool?.(delegateContext) as { taskId: string };
-      expect(delegateResult).toBeDefined();
-      expect(delegateResult.taskId).toBeDefined();
+      const state = getPluginState();
+      const taskId = await state.backgroundManager!.launch({
+        command: 'echo "test output"',
+        agentName: 'punch',
+      });
 
       const toolContext: ToolContext = {
         toolName: 'background-output',
-        params: { taskId: delegateResult.taskId, wait: false }
+        params: { taskId, wait: false }
       };
 
       const result = await plugin.hooks.onTool?.(toolContext);
@@ -783,6 +781,12 @@ describe('Monkey Code Plugin', () => {
       expect(delegateResult).toBeDefined();
       expect(delegateResult.taskId).toBeDefined();
 
+      const state = getPluginState();
+      const bgTaskId = await state.backgroundManager!.launch({
+        command: 'echo "registration test"',
+        agentName: 'punch',
+      });
+
       const planResult = await plugin.hooks.onTool?.({
         toolName: 'plan-write',
         params: {
@@ -801,8 +805,8 @@ describe('Monkey Code Plugin', () => {
         { name: 'plan-read', params: { projectPath: process.cwd() } },
         { name: 'plan-list', params: { projectPath: process.cwd() } },
         { name: 'plan-update-task', params: { planId: planResult.plan.id, taskId: planResult.tasks[0]?.id, status: 'completed' } },
-        { name: 'background-output', params: { taskId: delegateResult.taskId } },
-        { name: 'background-cancel', params: { taskId: delegateResult.taskId } },
+        { name: 'background-output', params: { taskId: bgTaskId } },
+        { name: 'background-cancel', params: { taskId: bgTaskId } },
         { name: 'interactive-bash', params: { command: 'bash', action: 'start' } },
         { name: 'skill-mcp', params: { skill: 'test', action: 'load' } }
       ];

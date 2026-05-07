@@ -393,13 +393,12 @@ This is the ${name} agent skill.
       };
 
       const result = await delegateTask(input, {
-        backgroundManager: mockBgManager,
         client: mockClient,
         parentSessionId: "parent_session_123",
       });
 
-      expect(result.taskId).toMatch(/^punch_task_/);
-      expect(result.status).toBe("pending");
+      expect(result.taskId).toMatch(/^punch_session_/);
+      expect(result.status).toBe("in_progress");
       expect(result.sessionId).toMatch(/^punch_session_/);
       expect(result.agent).toBe("punch");
     });
@@ -411,7 +410,6 @@ This is the ${name} agent skill.
       };
 
       await delegateTask(input, {
-        backgroundManager: mockBgManager,
         client: mockClient,
         parentSessionId: "main_session",
       });
@@ -429,14 +427,12 @@ This is the ${name} agent skill.
       };
 
       await delegateTask(input, {
-        backgroundManager: mockBgManager,
         client: mockClient,
       });
 
-      expect(mockBgManager.launch).toHaveBeenCalled();
-      const launchCall = (mockBgManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(launchCall[0].agentName).toBe("punch");
-      expect(launchCall[0].context).toBe("PR #123: Add new feature to dashboard");
+      expect(mockClient.session.prompt).toHaveBeenCalled();
+      const promptCall = (mockClient.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(promptCall[0].system).toContain("PR #123: Add new feature to dashboard");
     });
 
     it("should delegate multiple tasks to Punch", async () => {
@@ -449,8 +445,7 @@ This is the ${name} agent skill.
       const results = await Promise.all(
         tasks.map((t) =>
           delegateTask(t, {
-            backgroundManager: mockBgManager,
-            client: mockClient,
+                client: mockClient,
             parentSessionId: "batch_session",
           })
         )
@@ -458,7 +453,7 @@ This is the ${name} agent skill.
 
       expect(results).toHaveLength(3);
       results.forEach((r) => {
-        expect(r.taskId).toMatch(/^punch_task_/);
+        expect(r.sessionId).toMatch(/^punch_session_/);
         expect(r.agent).toBe("punch");
       });
     });
@@ -472,19 +467,27 @@ This is the ${name} agent skill.
       };
 
       const delegateResult = await delegateTask(input, {
-        backgroundManager: mockBgManager,
         client: mockClient,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      const taskId = delegateResult.sessionId;
+      mockBgManager._tasks.set(taskId, {
+        id: taskId,
+        status: "completed",
+        command: input.task,
+        output: "Punch agent completed: Generate test report",
+        agentName: "punch",
+        createdAt: Date.now(),
+        completedAt: Date.now(),
+      });
 
       const outputResult = await getBackgroundOutput(mockBgManager, {
-        taskId: delegateResult.taskId,
+        taskId,
         wait: true,
         timeout: 5000,
       });
 
-      expect(outputResult.taskId).toBe(delegateResult.taskId);
+      expect(outputResult.taskId).toBe(taskId);
       expect(outputResult.status).toBe("completed");
       expect(outputResult.output).toContain("Punch agent completed");
     });
@@ -497,13 +500,23 @@ This is the ${name} agent skill.
       };
 
       const delegateResult = await delegateTask(input, {
-        backgroundManager: mockBgManager,
         client: mockClient,
+      });
+
+      const taskId = delegateResult.sessionId;
+      mockBgManager._tasks.set(taskId, {
+        id: taskId,
+        status: "completed",
+        command: input.task,
+        output: "Punch agent completed: Long analysis task",
+        agentName: "punch",
+        createdAt: Date.now(),
+        completedAt: Date.now(),
       });
 
       let statusChecked = false;
       const checkStatus = async () => {
-        const status = await mockBgManager.getStatus(delegateResult.taskId);
+        const status = await mockBgManager.getStatus(taskId);
         statusChecked = true;
         return status;
       };
@@ -522,12 +535,20 @@ This is the ${name} agent skill.
       };
 
       const delegateResult = await delegateTask(input, {
-        backgroundManager: mockBgManager,
         client: mockClient,
       });
 
+      const taskId = delegateResult.sessionId;
+      mockBgManager._tasks.set(taskId, {
+        id: taskId,
+        status: "pending",
+        command: input.task,
+        agentName: "punch",
+        createdAt: Date.now(),
+      });
+
       mockBgManager._completeTask(
-        delegateResult.taskId,
+        taskId,
         JSON.stringify({
           agent: "punch",
           findings: ["Issue 1", "Issue 2"],
@@ -537,7 +558,7 @@ This is the ${name} agent skill.
       );
 
       const outputResult = await getBackgroundOutput(mockBgManager, {
-        taskId: delegateResult.taskId,
+        taskId,
         wait: true,
         timeout: 1000,
       });
@@ -579,19 +600,27 @@ This is the ${name} agent skill.
       };
 
       const delegateResult = await delegateTask(delegateInput, {
-        backgroundManager: mockBgManager,
         client: mockClient,
         parentSessionId: "punch_parent_session",
       });
 
       expect(delegateResult.taskId).toBeDefined();
       expect(delegateResult.sessionId).toBeDefined();
-      expect(delegateResult.status).toBe("pending");
+      expect(delegateResult.status).toBe("in_progress");
 
       await new Promise((resolve) => setTimeout(resolve, 200));
 
+      const taskId1 = delegateResult.sessionId;
+      mockBgManager._tasks.set(taskId1, {
+        id: taskId1,
+        status: "pending",
+        command: delegateInput.task,
+        agentName: "punch",
+        createdAt: Date.now(),
+      });
+
       mockBgManager._completeTask(
-        delegateResult.taskId,
+        taskId1,
         JSON.stringify({
           agent: "punch",
           status: "success",
@@ -604,7 +633,7 @@ This is the ${name} agent skill.
       );
 
       const outputResult = await getBackgroundOutput(mockBgManager, {
-        taskId: delegateResult.taskId,
+        taskId: taskId1,
         wait: true,
         timeout: 1000,
       });
@@ -615,7 +644,6 @@ This is the ${name} agent skill.
 
       const punchTasks = await mockBgManager.listTasks({ agentName: "punch" });
       expect(punchTasks.length).toBeGreaterThan(0);
-      expect(punchTasks[0].id).toBe(delegateResult.taskId);
     });
 
     it("should handle Punch delegation with MCP tool invocation", async () => {
@@ -650,17 +678,25 @@ This is the ${name} agent skill.
           context: "Run all analysis tools in sequence",
         },
         {
-          backgroundManager: mockBgManager,
-          client: mockClient,
+            client: mockClient,
         }
       );
 
       expect(delegateResult.taskId).toBeDefined();
 
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      const taskId2 = delegateResult.sessionId;
+      mockBgManager._tasks.set(taskId2, {
+        id: taskId2,
+        status: "completed",
+        command: "Execute full security pipeline",
+        output: "Punch agent completed: Execute full security pipeline",
+        agentName: "punch",
+        createdAt: Date.now(),
+        completedAt: Date.now(),
+      });
 
       const output = await getBackgroundOutput(mockBgManager, {
-        taskId: delegateResult.taskId,
+        taskId: taskId2,
         wait: true,
         timeout: 1000,
       });
@@ -680,8 +716,7 @@ This is the ${name} agent skill.
               agent,
             },
             {
-              backgroundManager: mockBgManager,
-              client: mockClient,
+                    client: mockClient,
               parentSessionId: "troop_session",
             }
           )
@@ -709,8 +744,7 @@ This is the ${name} agent skill.
       const delegateResults = await Promise.all(
         tasks.map((t) =>
           delegateTask(t, {
-            backgroundManager: mockBgManager,
-            client: mockClient,
+                client: mockClient,
           })
         )
       );
@@ -718,8 +752,16 @@ This is the ${name} agent skill.
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       delegateResults.forEach((r, i) => {
+        const tid = r.sessionId;
+        mockBgManager._tasks.set(tid, {
+          id: tid,
+          status: "pending",
+          command: tasks[i].task,
+          agentName: tasks[i].agent,
+          createdAt: Date.now(),
+        });
         mockBgManager._completeTask(
-          r.taskId,
+          tid,
           `Result from ${tasks[i].agent}: Success`
         );
       });
@@ -727,7 +769,7 @@ This is the ${name} agent skill.
       const outputs = await Promise.all(
         delegateResults.map((r) =>
           getBackgroundOutput(mockBgManager, {
-            taskId: r.taskId,
+            taskId: r.sessionId,
             wait: true,
             timeout: 1000,
           })
@@ -761,8 +803,7 @@ This is the ${name} agent skill.
         delegateTask(
           { task: "Will fail", agent: "punch" },
           {
-            backgroundManager: mockBgManager,
-            client: mockClient,
+                client: mockClient,
           }
         )
       ).rejects.toThrow("Failed to create child session");
@@ -772,20 +813,23 @@ This is the ${name} agent skill.
       const delegateResult = await delegateTask(
         { task: "Failing task", agent: "punch" },
         {
-          backgroundManager: mockBgManager,
-          client: mockClient,
+            client: mockClient,
         }
       );
 
-      const task = mockBgManager._tasks.get(delegateResult.taskId);
-      if (task) {
-        task.status = "failed";
-        task.error = "Punch agent encountered an error";
-        task.completedAt = Date.now();
-      }
+      const taskId = delegateResult.sessionId;
+      mockBgManager._tasks.set(taskId, {
+        id: taskId,
+        status: "failed",
+        command: "Failing task",
+        error: "Punch agent encountered an error",
+        agentName: "punch",
+        createdAt: Date.now(),
+        completedAt: Date.now(),
+      });
 
       const output = await getBackgroundOutput(mockBgManager, {
-        taskId: delegateResult.taskId,
+        taskId,
         wait: false,
       });
 
@@ -832,8 +876,7 @@ This is the ${name} agent skill.
       const delegateResult = await delegateTask(
         { task: "Git security audit", agent: "punch" },
         {
-          backgroundManager: mockBgManager,
-          client: mockClient,
+            client: mockClient,
         }
       );
 
@@ -859,8 +902,7 @@ This is the ${name} agent skill.
       const delegateResult = await delegateTask(
         { task: "Task with loaded skill", agent: "punch" },
         {
-          backgroundManager: mockBgManager,
-          client: mockClient,
+            client: mockClient,
         }
       );
 

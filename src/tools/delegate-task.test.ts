@@ -7,7 +7,6 @@ import {
   type DelegateTaskContext,
   type OpenCodeClient,
 } from "./delegate-task.js";
-import type { BackgroundManager } from "../managers/BackgroundManager.js";
 import { getSessionPromptParams, clearSessionPromptParams } from "../utils/session-prompt-params.js";
 
 function createMockClient(): OpenCodeClient {
@@ -19,30 +18,11 @@ function createMockClient(): OpenCodeClient {
   };
 }
 
-function createMockBackgroundManager(): BackgroundManager {
-  let taskCounter = 0;
-  return {
-    launch: vi.fn(() => {
-      taskCounter++;
-      return Promise.resolve(`task_${Date.now()}_${taskCounter}`);
-    }),
-    cancel: vi.fn(() => Promise.resolve()),
-    getStatus: vi.fn(() => Promise.resolve(null)),
-    getOutput: vi.fn(() => Promise.resolve(null)),
-    listTasks: vi.fn(() => Promise.resolve([])),
-    getRunningCount: vi.fn(() => 0),
-    getConcurrencyLimit: vi.fn(() => 5),
-    setConcurrencyLimit: vi.fn(() => {}),
-    onTaskComplete: vi.fn(() => {}),
-  } as unknown as BackgroundManager;
-}
-
 describe("delegate-task", () => {
   let ctx: DelegateTaskContext;
 
   beforeEach(() => {
     ctx = {
-      backgroundManager: createMockBackgroundManager(),
       client: createMockClient(),
       parentSessionId: "parent_session_123",
     };
@@ -56,9 +36,9 @@ describe("delegate-task", () => {
 
       const result = await delegateTask(input, ctx);
 
-      expect(result.taskId).toMatch(/^task_/);
       expect(result.sessionId).toMatch(/^session_/);
-      expect(result.status).toBe("pending");
+      expect(result.taskId).toBe(result.sessionId);
+      expect(result.status).toBe("in_progress");
       expect(result.agent).toBe("punch");
       expect(result.timeout).toBe(DEFAULT_TIMEOUT_MINUTES);
       expect(result.createdAt).toBeTypeOf("string");
@@ -66,7 +46,7 @@ describe("delegate-task", () => {
       expect(result.nextActions).toBeInstanceOf(Array);
       expect(result.nextActions.length).toBeGreaterThan(0);
       expect(result.nextActions[0].tool).toBe("background-output");
-      expect(result.nextActions[0].params.taskId).toBe(result.taskId);
+      expect(result.nextActions[0].params.taskId).toBe(result.sessionId);
     });
 
     it("should use specified agent instead of default", async () => {
@@ -99,10 +79,6 @@ describe("delegate-task", () => {
       expect(promptCall[0].agent).toBe("scout");
       expect(promptCall[0].system).toContain("grep_app");
       expect(promptCall[0].system).toContain("compact findings");
-
-      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(launchCall[0].agentName).toBe("scout");
-      expect(launchCall[0].command).toContain("--agent 'scout'");
     });
 
     it("should keep scout when exploratory task already targets scout", async () => {
@@ -164,7 +140,7 @@ describe("delegate-task", () => {
       expect(DEFAULT_TIMEOUT_MINUTES).toBe(30);
     });
 
-    it("should pass timeout to background manager", async () => {
+    it("should send prompt to session without noReply flag", async () => {
       const input: DelegateTaskInput = {
         task: "Long running analysis",
         timeout: 60,
@@ -172,23 +148,9 @@ describe("delegate-task", () => {
 
       await delegateTask(input, ctx);
 
-      expect(ctx.backgroundManager.launch).toHaveBeenCalled();
-      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(launchCall[0].timeout).toBe(60);
-    });
-
-    it("should pass plan linkage to background manager", async () => {
-      const input: DelegateTaskInput = {
-        task: "Run linked work",
-        planId: "plan-123",
-        planTaskId: "plan-task-456",
-      };
-
-      await delegateTask(input, ctx);
-
-      const launchCall = (ctx.backgroundManager.launch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(launchCall[0].planId).toBe("plan-123");
-      expect(launchCall[0].planTaskId).toBe("plan-task-456");
+      expect(ctx.client.session.prompt).toHaveBeenCalled();
+      const promptCall = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(promptCall[0].noReply).toBeUndefined();
     });
 
     it("should set parentSessionId on child session", async () => {
@@ -227,25 +189,15 @@ describe("delegate-task", () => {
       await expect(delegateTask(input, ctx)).rejects.toThrow("Failed to create child session");
     });
 
-    it("should not wait for task completion", async () => {
-      let launchResolved = false;
-      ctx.backgroundManager.launch = vi.fn(() =>
-        new Promise<string>((resolve) => {
-          setTimeout(() => {
-            launchResolved = true;
-            resolve("task_delayed");
-          }, 100);
-        })
-      );
-
+    it("should complete delegation without waiting for task to finish", async () => {
       const input: DelegateTaskInput = {
         task: "Non-blocking task",
       };
 
       const result = await delegateTask(input, ctx);
 
-      expect(result.taskId).toBeDefined();
-      expect(launchResolved).toBe(true);
+      expect(result.sessionId).toBeDefined();
+      expect(result.status).toBe("in_progress");
     });
 
     it("should include task description in session title", async () => {
@@ -269,7 +221,7 @@ describe("delegate-task", () => {
       };
 
       const result = await delegateTask(input, ctx);
-      expect(result.taskId).toBeDefined();
+      expect(result.sessionId).toBeDefined();
       expect(result.sessionId).toBeDefined();
     });
 

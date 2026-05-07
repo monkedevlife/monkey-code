@@ -1,5 +1,4 @@
 import { delegateTask, type OpenCodeClient } from "../tools/delegate-task.js";
-import type { BackgroundManager } from "../managers/BackgroundManager.js";
 import type { SQLiteClient } from "../utils/sqlite-client.js";
 import { updatePlanTaskState } from "../tools/plan-store.js";
 
@@ -11,7 +10,6 @@ export interface PlanContinuationClient extends OpenCodeClient {}
 
 export interface PlanContinuationOptions {
   sqlite: SQLiteClient;
-  backgroundManager: BackgroundManager;
   client: PlanContinuationClient;
   projectPath: string;
   worktree?: string;
@@ -24,7 +22,7 @@ const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DEBOUNCE_MS = 0;
 
 async function dispatchPlanTask(options: PlanContinuationOptions, input: PlanContinuationInput) {
-  const { sqlite, backgroundManager, client, projectPath, defaultAgent = "punch", resolveAgentConfig } = options;
+  const { sqlite, client, projectPath, defaultAgent = "punch", resolveAgentConfig } = options;
 
   const next = await sqlite.getNextRunnablePlanTask(projectPath, input.sessionID);
   if (!next) return null;
@@ -57,7 +55,6 @@ async function dispatchPlanTask(options: PlanContinuationOptions, input: PlanCon
       planTaskId: next.task.id,
     },
     {
-      backgroundManager,
       client,
       parentSessionId: input.sessionID,
       agentConfig: resolveAgentConfig?.(defaultAgent) as any,
