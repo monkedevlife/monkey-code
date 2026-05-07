@@ -1,10 +1,8 @@
-import Database from "better-sqlite3";
 import { resolve } from "node:path";
-import * as sqliteVss from "sqlite-vss";
 
-type StatementLike = Database.Statement & { finalize(): void };
+type StatementLike = { run(...args: unknown[]): { lastInsertRowid: number | bigint; changes: number }; get(...args: unknown[]): unknown; all(...args: unknown[]): unknown[]; finalize(): void };
 
-function prepare(db: Database.Database, sql: string): StatementLike {
+function prepare(db: { prepare(sql: string): { run(...args: unknown[]): { lastInsertRowid: number | bigint; changes: number }; get(...args: unknown[]): unknown; all(...args: unknown[]): unknown[] } }, sql: string): StatementLike {
   const stmt = db.prepare(sql);
   return Object.assign(stmt, { finalize: () => {} }) as StatementLike;
 }
@@ -146,12 +144,13 @@ export class SQLiteClientError extends Error {
 }
 
 export class SQLiteClient {
-  private db: Database.Database;
+  private db: any;
+  private dbPath: string;
   private initialized = false;
   private vssEnabled = false;
 
   constructor(dbPath: string = ":memory:") {
-    this.db = new Database(dbPath);
+    this.dbPath = dbPath;
   }
 
   async initialize(): Promise<void> {
@@ -160,8 +159,16 @@ export class SQLiteClient {
     }
 
     try {
+      const isBun = typeof process !== "undefined" && !!(process.versions as any)?.bun;
+      if (isBun) {
+        const bunSqlite = await import("bun:sqlite") as any;
+        this.db = new bunSqlite.Database(this.dbPath);
+      } else {
+        const betterSqlite = await import("better-sqlite3");
+        this.db = new betterSqlite.default(this.dbPath);
+      }
       this.db.exec("PRAGMA foreign_keys = ON");
-      this.tryLoadVssExtensions();
+      await this.tryLoadVssExtensions();
       this.createTasksTable();
       this.createMemoryTable();
       this.createPlansTable();
@@ -177,8 +184,9 @@ export class SQLiteClient {
     }
   }
 
-  private tryLoadVssExtensions(): void {
+  private async tryLoadVssExtensions(): Promise<void> {
     try {
+      const sqliteVss = await import("sqlite-vss");
       sqliteVss.loadVector(this.db);
       sqliteVss.loadVss(this.db);
 
