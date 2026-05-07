@@ -15,6 +15,7 @@ import { createStartWorkHook } from './hooks/start-work.js';
 import { createPlanContinuationHook } from './hooks/plan-continuation.js';
 import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
+import { createReviewPlanHook } from './hooks/review-plan.js';
 import { handleOpenSpecRead, handleOpenSpecWrite, handleOpenSpecList } from './tools/openspec.js';
 import { readBundledAgent, buildBundledAgentPermission } from './bundled-agents.js';
 
@@ -106,6 +107,17 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
       description: 'Start working from a stored execution plan',
       template: '/start-work $ARGUMENTS',
       hints: ['$ARGUMENTS'],
+    },
+    'review-plan': {
+      name: 'review-plan',
+      description: 'Review a stored execution plan using Harambe (critic)',
+      template: '/review-plan $ARGUMENTS',
+      hints: ['$ARGUMENTS'],
+    },
+    'stop-all': {
+      name: 'stop-all',
+      description: 'Cancel all background tasks and terminate active processes',
+      template: '/stop-all',
     },
   };
 
@@ -653,12 +665,21 @@ export const server: Plugin = async (input) => {
             },
           })
         : null;
+      const reviewPlanHook = pluginState.sqlite
+        ? createReviewPlanHook({
+            sqlite: pluginState.sqlite,
+            projectPath: buildProjectPath(input),
+          })
+        : null;
 
       if (startWorkHook) {
         await startWorkHook['chat.message']?.(hookInput as { sessionID: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
       if (stopAllHook) {
         await stopAllHook['chat.message']?.(hookInput as { sessionID: string; client?: { session?: { abort?: (params: unknown) => Promise<unknown> } } }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
+      }
+      if (reviewPlanHook) {
+        await reviewPlanHook['chat.message']?.(hookInput as { sessionID: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
     },
     'command.execute.before': async (hookInput, output) => {
@@ -685,12 +706,44 @@ export const server: Plugin = async (input) => {
             },
           })
         : null;
+      const reviewPlanHook = pluginState.sqlite
+        ? createReviewPlanHook({
+            sqlite: pluginState.sqlite,
+            projectPath: buildProjectPath(input),
+          })
+        : null;
 
       if (startWorkHook) {
         await startWorkHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
       if (stopAllHook) {
         await stopAllHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
+      }
+      if (reviewPlanHook) {
+        await reviewPlanHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
+      }
+    },
+    'tool.execute.after': async (hookInput, output) => {
+      if (hookInput.tool !== 'plan-write') return;
+
+      try {
+        const parsed = JSON.parse(output.output);
+        const planTitle = parsed?.plan?.title;
+        if (planTitle) {
+          const args = hookInput.args as Record<string, unknown> | undefined;
+          const isUpdate = Boolean(args?.id);
+          const action = isUpdate ? "updated" : "saved";
+          output.title = `Plan "${planTitle}" ${action}`;
+          output.output = [
+            `Plan "${planTitle}" is ready.`,
+            isUpdate ? "" : `Start: /start-work "${planTitle}"`,
+            `Review: /review-plan "${planTitle}"`,
+            "",
+            output.output,
+          ].filter(Boolean).join("\n");
+        }
+      } catch {
+        // output might not be parseable JSON
       }
     },
   };
