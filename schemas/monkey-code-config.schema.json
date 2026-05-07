@@ -103,7 +103,10 @@
                 "engine": {
                   "type": "string",
                   "description": "Search engine to use",
-                  "enum": ["google", "bing"],
+                  "enum": [
+                    "google",
+                    "bing"
+                  ],
                   "default": "google"
                 },
                 "maxResults": {
@@ -236,7 +239,15 @@
         "reasoningEffort": {
           "type": "string",
           "description": "Reasoning effort level for OpenAI models",
-          "enum": ["none", "minimal", "low", "medium", "high", "xhigh"]
+          "enum": [
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
         },
         "thinking": {
           "type": "object",
@@ -245,7 +256,10 @@
             "type": {
               "type": "string",
               "description": "Enable or disable extended thinking",
-              "enum": ["enabled", "disabled"]
+              "enum": [
+                "enabled",
+                "disabled"
+              ]
             },
             "budgetTokens": {
               "type": "integer",
@@ -253,7 +267,9 @@
               "minimum": 1
             }
           },
-          "required": ["type"],
+          "required": [
+            "type"
+          ],
           "additionalProperties": false
         },
         "providerOptions": {

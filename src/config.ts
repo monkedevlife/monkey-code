@@ -19,7 +19,7 @@ const AgentConfigSchema = z.object({
   maxTokens: z.number().positive().optional(),
   presencePenalty: z.number().min(-2).max(2).optional(),
   frequencyPenalty: z.number().min(-2).max(2).optional(),
-  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
   thinking: ThinkingConfigSchema.optional(),
   providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
@@ -183,7 +183,7 @@ function getConfigDirs(projectRoot = process.cwd()) {
 
 function ensureConfigDir(projectRoot = process.cwd()) {
   const { userConfigDir, tasksDir, logsDir, presetsDir } = getConfigDirs(projectRoot);
-  
+
   if (!existsSync(userConfigDir)) {
     mkdirSync(userConfigDir, { recursive: true });
   }
