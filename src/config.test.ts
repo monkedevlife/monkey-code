@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   loadConfig,
   getConfigPaths,
@@ -500,6 +500,69 @@ describe('Config System', () => {
       const config = loadConfig();
 
       expect(config.mcps?.context7?.apiKey).toBe('secret-key-123');
+    });
+
+    it('should accept valid caveman config with intensity', () => {
+      mkdirSync('.opencode', { recursive: true });
+      const projectConfig = {
+        caveman: {
+          enabled: true,
+          intensity: 'ultra',
+        },
+      };
+      writeFileSync('.opencode/monkey-code.json', JSON.stringify(projectConfig));
+
+      const config = loadConfig();
+
+      expect(config.caveman?.enabled).toBe(true);
+      expect(config.caveman?.intensity).toBe('ultra');
+    });
+
+    it('should reject invalid caveman intensity', () => {
+      mkdirSync('.opencode', { recursive: true });
+      const invalidConfig = {
+        caveman: {
+          enabled: true,
+          intensity: 'invalid-level',
+        },
+      };
+      writeFileSync('.opencode/monkey-code.json', JSON.stringify(invalidConfig));
+
+      expect(() => loadConfig()).toThrow();
+    });
+
+    it('should default caveman to disabled when omitted', () => {
+      const config = loadConfig();
+
+      expect(config.caveman?.enabled).toBe(false);
+    });
+
+    it('should use CAVEMAN_DEFAULT_MODE env var for default intensity', async () => {
+      const saved = process.env.CAVEMAN_DEFAULT_MODE;
+      process.env.CAVEMAN_DEFAULT_MODE = 'ultra';
+      vi.resetModules();
+
+      const { loadConfig: freshLoadConfig } = await import('./config');
+      const config = freshLoadConfig();
+
+      expect(config.caveman?.intensity).toBe('ultra');
+      process.env.CAVEMAN_DEFAULT_MODE = saved;
+      vi.resetModules();
+      await import('./config');
+    });
+
+    it('should fall back to full intensity for invalid CAVEMAN_DEFAULT_MODE', async () => {
+      const saved = process.env.CAVEMAN_DEFAULT_MODE;
+      process.env.CAVEMAN_DEFAULT_MODE = 'bad-value';
+      vi.resetModules();
+
+      const { loadConfig: freshLoadConfig } = await import('./config');
+      const config = freshLoadConfig();
+
+      expect(config.caveman?.intensity).toBe('full');
+      process.env.CAVEMAN_DEFAULT_MODE = saved;
+      vi.resetModules();
+      await import('./config');
     });
 
   });

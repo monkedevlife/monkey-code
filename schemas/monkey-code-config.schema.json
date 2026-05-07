@@ -190,6 +190,24 @@
         }
       },
       "additionalProperties": false
+    },
+    "caveman": {
+      "type": "object",
+      "description": "Caveman/wenyan token compression mode. When enabled, agents respond in compressed caveman-style prose to reduce token usage.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable caveman compression mode for all agents",
+          "default": false
+        },
+        "intensity": {
+          "type": "string",
+          "description": "Compression intensity level",
+          "enum": ["lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"],
+          "default": "full"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

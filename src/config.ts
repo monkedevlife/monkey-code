@@ -79,6 +79,13 @@ const TmuxConfigSchema = z.object({
   path: z.string().optional(),
 });
 
+const CAVEMAN_INTENSITIES = ['lite', 'full', 'ultra', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra'] as const;
+const CavemanConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  intensity: z.enum(CAVEMAN_INTENSITIES).default('full'),
+});
+export type CavemanConfig = z.infer<typeof CavemanConfigSchema>;
+
 const ConfigSchema = z.object({
   $schema: z.string().optional(),
   agents: AgentsSchema.optional(),
@@ -87,6 +94,7 @@ const ConfigSchema = z.object({
   sqlite: SqliteConfigSchema.optional(),
   tmux: TmuxConfigSchema.optional(),
   openspec: z.boolean().default(false),
+  caveman: CavemanConfigSchema.optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -155,6 +163,14 @@ const DEFAULT_CONFIG: Config = {
     enabled: true,
   },
   openspec: false,
+  caveman: {
+    enabled: false,
+    intensity: (() => {
+      const env = process.env.CAVEMAN_DEFAULT_MODE?.trim().toLowerCase();
+      if (env && (CAVEMAN_INTENSITIES as readonly string[]).includes(env)) return env as typeof CAVEMAN_INTENSITIES[number];
+      return 'full';
+    })(),
+  },
 };
 
 function getConfigDirs(projectRoot = process.cwd()) {

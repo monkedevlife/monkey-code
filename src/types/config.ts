@@ -9,4 +9,5 @@ export type {
   McpsConfig,
   SqliteConfig,
   TmuxConfig,
+  CavemanConfig,
 } from '../config';

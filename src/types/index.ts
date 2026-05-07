@@ -141,3 +141,8 @@ export interface MemoryRecord {
   metadata?: Record<string, unknown>;
   createdAt: number;
 }
+
+export interface CavemanRuntimeState {
+  active: boolean;
+  intensity: string;
+}
