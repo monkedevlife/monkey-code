@@ -518,6 +518,32 @@ export function createPlugin(): MonkeyCodePlugin {
         input as { sessionID: string },
         output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> }
       );
+    },
+
+    onCommandExecuteBefore: async (input: unknown, output: unknown): Promise<void> => {
+      if (!pluginState.sqlite) return;
+
+      const startWorkHook = createStartWorkHook({
+        sqlite: pluginState.sqlite,
+        projectPath: process.cwd(),
+        worktree: process.cwd(),
+        defaultAgent: 'punch'
+      });
+      const stopAllHook = pluginState.backgroundManager
+        ? createStopAllHook({
+            backgroundManager: pluginState.backgroundManager,
+            interactiveManager: pluginState.interactiveManager,
+          })
+        : null;
+
+      await startWorkHook['command.execute.before']?.(
+        input as { sessionID: string; command: string; arguments: string },
+        output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> }
+      );
+      await stopAllHook?.['command.execute.before']?.(
+        input as { sessionID: string; command: string; arguments: string },
+        output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> }
+      );
     }
   };
 

@@ -62,6 +62,7 @@ export interface HookHandlers {
   onEvent?: (event: PluginEvent) => void | Promise<void>;
   onChatParams?: (input: unknown, output: unknown) => void | Promise<void>;
   onChatMessage?: (input: unknown, output: unknown) => void | Promise<void>;
+  onCommandExecuteBefore?: (input: unknown, output: unknown) => void | Promise<void>;
 }
 
 // Plugin Event Types

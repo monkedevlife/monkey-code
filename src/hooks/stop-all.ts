@@ -10,8 +10,14 @@ export interface StopAllInput {
   };
 }
 
+export interface StopAllCommandInput {
+  sessionID: string;
+  command: string;
+  arguments: string;
+}
+
 export interface StopAllOutput {
-  parts: Array<{ type: string; text?: string }>;
+  parts: Array<Record<string, unknown> & { type: string; text?: string }>;
   message?: Record<string, unknown>;
 }
 
@@ -34,6 +40,17 @@ function detectAbortCurrentSession(input: StopAllInput) {
   };
 }
 
+function buildOutputPart(
+  existingParts: StopAllOutput["parts"],
+  text: string
+): StopAllOutput["parts"][number] {
+  const first = existingParts[0];
+  if (first) {
+    return { ...first, type: "text", text };
+  }
+  return { type: "text", text };
+}
+
 export function createStopAllHook(options: {
   backgroundManager: BackgroundManager;
   interactiveManager?: InteractiveManager;
@@ -41,31 +58,43 @@ export function createStopAllHook(options: {
 }) {
   const { backgroundManager, interactiveManager, abortCurrentSession } = options;
 
+  async function execute(
+    sessionID: string,
+    input: StopAllInput | StopAllCommandInput,
+    output: StopAllOutput
+  ): Promise<void> {
+    const tasks = await backgroundManager.listTasks();
+    const cancellableTasks = tasks.filter((task) => task.status !== "completed" && task.status !== "failed");
+
+    await Promise.all(
+      cancellableTasks.map((task) => backgroundManager.cancel(task.id).catch(() => undefined)),
+    );
+
+    if (interactiveManager) {
+      await interactiveManager.cleanup();
+    }
+
+    output.parts = [buildOutputPart(output.parts, `Stopped ${cancellableTasks.length} background task(s) and terminated active processes.`)];
+
+    const abort = abortCurrentSession ?? detectAbortCurrentSession(input as StopAllInput);
+    if (abort) {
+      await abort(sessionID);
+    }
+  }
+
   return {
     "chat.message": async (input: StopAllInput, output: StopAllOutput): Promise<void> => {
       const promptText = extractPromptText(output.parts);
       if (!STOP_ALL_REGEX.test(promptText)) return;
+      await execute(input.sessionID, input, output);
+    },
 
-      const tasks = await backgroundManager.listTasks();
-      const cancellableTasks = tasks.filter((task) => task.status !== "completed" && task.status !== "failed");
-
-      await Promise.all(
-        cancellableTasks.map((task) => backgroundManager.cancel(task.id).catch(() => undefined)),
-      );
-
-      if (interactiveManager) {
-        await interactiveManager.cleanup();
-      }
-
-      output.parts = [{
-        type: "text",
-        text: `Stopped ${cancellableTasks.length} background task(s) and terminated active processes.`,
-      }];
-
-      const abort = abortCurrentSession ?? detectAbortCurrentSession(input);
-      if (abort) {
-        await abort(input.sessionID);
-      }
+    "command.execute.before": async (
+      input: StopAllCommandInput,
+      output: StopAllOutput
+    ): Promise<void> => {
+      if (input.command !== "stop-all") return;
+      await execute(input.sessionID, input, output);
     },
   };
 }
