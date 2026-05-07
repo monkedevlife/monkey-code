@@ -162,10 +162,16 @@ function getConfigDirs(projectRoot = process.cwd()) {
   if (!home) {
     throw new Error('Could not determine home directory');
   }
+  const userOpencodeConfigDir = join(home, '.config', 'opencode');
+  const profileConfigDir = process.env.OPENCODE_CONFIG_DIR?.trim();
+  const profileConfig = profileConfigDir
+    ? join(profileConfigDir, 'monkey-code.json')
+    : undefined;
   return {
     projectConfig: join(projectRoot, '.opencode', 'monkey-code.json'),
-    userOpencodeConfigDir: join(home, '.config', 'opencode'),
-    userOpencodeConfig: join(home, '.config', 'opencode', 'monkey-code.json'),
+    userOpencodeConfigDir,
+    userOpencodeConfig: join(userOpencodeConfigDir, 'monkey-code.json'),
+    profileConfig,
     userConfigDir: join(home, '.config', 'monkey-code'),
     dbPath: join(home, '.config', 'monkey-code', 'monkey.db'),
     tasksDir: join(home, '.config', 'monkey-code', 'tasks'),
@@ -326,12 +332,13 @@ export function writeUserOpencodeConfig(projectRoot = process.cwd()) {
 
 export function loadConfig(projectRoot = process.cwd()): Config {
   ensureConfigDir(projectRoot);
-  const { projectConfig, userOpencodeConfig } = getConfigDirs(projectRoot);
+  const { projectConfig, userOpencodeConfig, profileConfig } = getConfigDirs(projectRoot);
   const userConfig = loadConfigFile(userOpencodeConfig);
+  const profileConfigLayer = profileConfig ? loadConfigFile(profileConfig) : {};
   const localConfig = loadConfigFile(projectConfig);
 
-  const finalMerged = mergeConfigLayers(DEFAULT_CONFIG, userConfig, localConfig);
-  
+  const finalMerged = mergeConfigLayers(DEFAULT_CONFIG, userConfig, localConfig, profileConfigLayer);
+
   try {
     return ConfigSchema.parse(finalMerged);
   } catch (error) {

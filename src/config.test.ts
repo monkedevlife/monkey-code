@@ -98,6 +98,46 @@ describe('Config System', () => {
       expect(config.background?.pollInterval).toBe(2000);
     });
 
+    it('should load profile config from OPENCODE_CONFIG_DIR when set', () => {
+      const profileDir = join(testDir, 'profile');
+      mkdirSync(profileDir, { recursive: true });
+      process.env.OPENCODE_CONFIG_DIR = profileDir;
+      writeFileSync(join(profileDir, 'monkey-code.json'), JSON.stringify({ background: { maxConcurrent: 7 } }));
+
+      const config = loadConfig();
+
+      expect(config.background?.maxConcurrent).toBe(7);
+      delete process.env.OPENCODE_CONFIG_DIR;
+    });
+
+    it('should let profile config override project config', () => {
+      const profileDir = join(testDir, 'profile');
+      mkdirSync(profileDir, { recursive: true });
+      process.env.OPENCODE_CONFIG_DIR = profileDir;
+      writeFileSync(join(profileDir, 'monkey-code.json'), JSON.stringify({ background: { maxConcurrent: 7, pollInterval: 3000 } }));
+
+      mkdirSync('.opencode', { recursive: true });
+      writeFileSync('.opencode/monkey-code.json', JSON.stringify({ background: { maxConcurrent: 2 } }));
+
+      const config = loadConfig();
+
+      expect(config.background?.maxConcurrent).toBe(7);
+      expect(config.background?.pollInterval).toBe(3000);
+      delete process.env.OPENCODE_CONFIG_DIR;
+    });
+
+    it('should use OPENCODE_CONFIG_DIR even when it matches user config dir', () => {
+      const { userOpencodeConfigDir, userOpencodeConfig } = getConfigPaths();
+      mkdirSync(userOpencodeConfigDir, { recursive: true });
+      writeFileSync(userOpencodeConfig, JSON.stringify({ background: { maxConcurrent: 4 } }));
+      process.env.OPENCODE_CONFIG_DIR = userOpencodeConfigDir;
+
+      const config = loadConfig();
+
+      expect(config.background?.maxConcurrent).toBe(4);
+      delete process.env.OPENCODE_CONFIG_DIR;
+    });
+
     it('should provide user opencode config paths', () => {
       const paths = getConfigPaths();
 
