@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs'
 
 const agents = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder', 'openspec-plan'] as const
-const primaryAgents = new Set(['punch', 'harambe', 'caesar', 'george'])
+const primaryAgents = new Set(['punch', 'caesar'])
 const pluginRoot = new URL('..', import.meta.url)
 
 export type BundledAgentName = (typeof agents)[number]

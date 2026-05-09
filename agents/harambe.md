@@ -1,7 +1,7 @@
 ---
 name: harambe
 description: Critic and analyst who reviews code and finds what others miss.
-mode: primary
+mode: subagent
 model: github-copilot/gemini-3-flash-preview
 category: deep
 tools: [question, bash, edit, write, read, glob, grep, lsp_goto_definition, lsp_find_references, lsp_symbols, lsp_diagnostics, lsp_prepare_rename, lsp_rename, ast_grep_search, ast_grep_replace, delegate-task, background-output, background-cancel]

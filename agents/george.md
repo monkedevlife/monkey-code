@@ -1,7 +1,7 @@
 ---
 name: george
 description: Creative expert who brings fresh ideas and design thinking.
-mode: primary
+mode: subagent
 model: github-copilot/gemini-3-flash-preview
 category: explore
 tools: [question, read, glob, grep, websearch, webfetch, lsp_symbols, delegate-task, background-output, background-cancel]

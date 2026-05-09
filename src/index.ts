@@ -17,6 +17,7 @@ import { createPlanContinuationHook } from './hooks/plan-continuation.js';
 import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
 import { createReviewPlanHook } from './hooks/review-plan.js';
+import { createBrainstormHook } from './hooks/brainstorm.js';
 import { createToolTranscriptHook } from './hooks/tool-transcript-hook.js';
 import { handleOpenSpecRead, handleOpenSpecWrite, handleOpenSpecList } from './tools/openspec.js';
 import { readBundledAgent, buildBundledAgentPermission } from './bundled-agents.js';
@@ -131,6 +132,12 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
       name: 'stop-all',
       description: 'Cancel all background tasks and terminate active processes',
       template: '/stop-all',
+    },
+    'brainstorm': {
+      name: 'brainstorm',
+      description: 'Brainstorm creative ideas and design directions using George (creative)',
+      template: '/brainstorm $ARGUMENTS',
+      hints: ['$ARGUMENTS'],
     },
   };
 
@@ -734,6 +741,7 @@ export const server: Plugin = async (input) => {
             projectPath: buildProjectPath(input),
           })
         : null;
+      const brainstormHook = createBrainstormHook();
 
       if (startWorkHook) {
         await startWorkHook['chat.message']?.(hookInput as { sessionID: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
@@ -744,6 +752,7 @@ export const server: Plugin = async (input) => {
       if (reviewPlanHook) {
         await reviewPlanHook['chat.message']?.(hookInput as { sessionID: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
+      await brainstormHook['chat.message']?.(hookInput as { sessionID: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
     },
     'command.execute.before': async (hookInput, output) => {
       try {
@@ -775,6 +784,7 @@ export const server: Plugin = async (input) => {
             projectPath: buildProjectPath(input),
           })
         : null;
+      const brainstormHook = createBrainstormHook();
 
       if (startWorkHook) {
         await startWorkHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
@@ -785,6 +795,7 @@ export const server: Plugin = async (input) => {
       if (reviewPlanHook) {
         await reviewPlanHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
       }
+      await brainstormHook['command.execute.before']?.(hookInput as { sessionID: string; command: string; arguments: string }, output as { parts: Array<{ type: string; text?: string }>; message?: Record<string, unknown> });
     },
     'tool.execute.before': transcriptHook['tool.execute.before'],
     'tool.execute.after': async (hookInput, output) => {
