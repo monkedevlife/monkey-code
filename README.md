@@ -208,22 +208,11 @@ Control concurrent execution and polling behavior:
 
 ### MCP Servers
 
-Configure built-in MCP integrations:
+Monkey Code configures the following built-in MCP integrations:
 
 ```json
 {
   "mcps": {
-    "chromeDevTools": {
-      "enabled": true,
-      "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      "profile": "/tmp/chrome-profile",
-      "flags": ["--headless"],
-      "search": {
-        "enabled": true,
-        "engine": "google",
-        "maxResults": 10
-      }
-    },
     "context7": {
       "enabled": true,
       "apiKey": "your-api-key"
@@ -235,17 +224,35 @@ Configure built-in MCP integrations:
 }
 ```
 
+**Chrome DevTools MCP** is no longer managed by Monkey Code. Configure it directly in your OpenCode profile (`~/.config/opencode/profiles/<profile>/opencode.jsonc`):
+
+```jsonc
+"mcp": {
+    "chrome_devtools": {
+        "type": "local",
+        "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--executablePath", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
+        "enabled": true
+    }
+}
+```
+
+Optional Chrome DevTools MCP arguments:
+
+| Flag | Description |
+|------|-------------|
+| `--executablePath` | Path to Chrome/Chromium binary |
+| `--userDataDir` | Chrome user data directory |
+| `--headless` | Run browser in headless mode |
+| `--chromeArg` | Additional Chrome flags (repeatable) |
+| `--browserUrl` | Connect to a running Chrome instance |
+| `--viewport` | Initial viewport size (e.g., `1280x720`) |
+
+For full options, run: `npx chrome-devtools-mcp@latest --help`
+
 **MCP Config Options:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `chromeDevTools.enabled` | boolean | `true` | Enable Chrome DevTools MCP |
-| `chromeDevTools.executable` | string | - | Path to Chrome/Chromium binary |
-| `chromeDevTools.profile` | string | - | Chrome profile directory |
-| `chromeDevTools.flags` | string[] | - | Additional Chrome flags |
-| `chromeDevTools.search.enabled` | boolean | `true` | Enable web search |
-| `chromeDevTools.search.engine` | string | `google` | Search engine (`google` or `bing`) |
-| `chromeDevTools.search.maxResults` | integer | `10` | Max search results |
 | `context7.enabled` | boolean | `true` | Enable Context7 docs search |
 | `context7.apiKey` | string | - | Context7 API key |
 | `grepApp.enabled` | boolean | `true` | Enable Grep.app code search |
@@ -711,7 +718,7 @@ ls ~/.config/monkey-code/tasks/
 ```
 
 ### MCP Connection Errors
-- **Chrome DevTools**: Ensure Chrome/Chromium is installed
+- **Chrome DevTools**: Configure directly in `opencode.jsonc` (see [MCP Servers](#mcp-servers)). Ensure the browser path is correct and `npx` is available.
 - **Context7**: Check internet connection and API key if required
 - **Grep.app**: Verify network connectivity
 

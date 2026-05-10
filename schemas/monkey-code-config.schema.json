@@ -67,60 +67,6 @@
       "type": "object",
       "description": "MCP (Model Context Protocol) server configurations",
       "properties": {
-        "chromeDevTools": {
-          "type": "object",
-          "description": "Chrome DevTools MCP for browser automation",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable/disable Chrome DevTools MCP",
-              "default": true
-            },
-            "executable": {
-              "type": "string",
-              "description": "Path to Chrome/Chromium executable"
-            },
-            "profile": {
-              "type": "string",
-              "description": "Chrome profile directory to use"
-            },
-            "flags": {
-              "type": "array",
-              "description": "Additional Chrome command-line flags",
-              "items": {
-                "type": "string"
-              }
-            },
-            "search": {
-              "type": "object",
-              "description": "Web search configuration for Chrome DevTools",
-              "properties": {
-                "enabled": {
-                  "type": "boolean",
-                  "description": "Enable web search via Chrome",
-                  "default": true
-                },
-                "engine": {
-                  "type": "string",
-                  "description": "Search engine to use",
-                  "enum": [
-                    "google",
-                    "bing"
-                  ],
-                  "default": "google"
-                },
-                "maxResults": {
-                  "type": "integer",
-                  "description": "Maximum number of search results",
-                  "minimum": 1,
-                  "default": 10
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
         "context7": {
           "type": "object",
           "description": "Context7 documentation search MCP",

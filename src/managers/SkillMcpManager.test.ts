@@ -527,7 +527,6 @@ Body content.`
 
     it("should skip disabled MCPs", async () => {
       const config: McpsConfig = {
-        chromeDevTools: { enabled: false },
         context7: { enabled: false },
         grepApp: { enabled: false },
       };
@@ -538,23 +537,11 @@ Body content.`
 
     it("should handle errors from individual MCPs gracefully", async () => {
       const config: McpsConfig = {
-        chromeDevTools: { enabled: true },
         context7: { enabled: true },
         grepApp: { enabled: true },
       };
 
       await expect(manager.initializeBuiltinMcps(config)).resolves.toBeUndefined();
-    });
-
-    it("should use npx fallback for chrome devtools when executable is configured", async () => {
-      const command = await (manager as unknown as {
-        resolveChromeDevToolsCommand: (executable?: string) => Promise<{ command: string; args: string[] }>;
-      }).resolveChromeDevToolsCommand('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
-
-      expect(command).toEqual({
-        command: 'npx',
-        args: ['-y', 'chrome-devtools-mcp@latest'],
-      });
     });
 
     it("should not start local servers for remote builtin MCPs", async () => {
@@ -662,7 +649,7 @@ describe("createSkillMcpManager", () => {
     const m = createSkillMcpManager({
       sessionId: "test-session",
       builtinConfig: {
-        chromeDevTools: { enabled: true },
+        grepApp: { enabled: true },
       },
     });
     expect(m).toBeInstanceOf(SkillMcpManager);

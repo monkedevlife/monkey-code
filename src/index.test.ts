@@ -286,4 +286,6 @@ describe('caveman chat hook', () => {
     const cavemanBlock = getCavemanInstructions('full');
     expect(punchPrompt.startsWith(cavemanBlock)).toBe(false);
   });
+
 });
+

@@ -67,10 +67,6 @@ export class SkillMcpManager implements ISkillMcpManager {
       return;
     }
 
-    if (mcpsConfig.chromeDevTools?.enabled) {
-      await this.initializeChromeDevTools(mcpsConfig.chromeDevTools);
-    }
-
     if (mcpsConfig.context7?.enabled) {
       await this.initializeContext7(mcpsConfig.context7);
     }
@@ -78,70 +74,6 @@ export class SkillMcpManager implements ISkillMcpManager {
     if (mcpsConfig.grepApp?.enabled) {
       await this.initializeGrepApp(mcpsConfig.grepApp);
     }
-  }
-
-  private async initializeChromeDevTools(
-    config: McpsConfig["chromeDevTools"]
-  ): Promise<void> {
-    if (!config) return;
-
-    const command = await this.resolveChromeDevToolsCommand(config.executable);
-    const serverId = "builtin:chrome-devtools";
-    const serverConfig: McpServerConfig = {
-      type: "stdio",
-      command: command.command,
-      args: [
-        ...command.args,
-        ...(config.executable ? ["--executablePath", config.executable] : []),
-        ...(config.profile ? ["--userDataDir", config.profile] : []),
-        ...((config.flags || []).flatMap((flag) => ["--chromeArg", flag])),
-      ],
-      env: {},
-    };
-
-    try {
-      await this.startMcp(serverConfig, serverId);
-    } catch (error) {
-      throw new SkillMcpManagerError(
-        `Failed to initialize Chrome DevTools MCP: ${error instanceof Error ? error.message : String(error)}`,
-        "CHROME_DEVTOOLS_INIT_ERROR",
-        serverId
-      );
-    }
-  }
-
-  private async resolveChromeDevToolsCommand(executable?: string): Promise<{
-    command: string;
-    args: string[];
-  }> {
-    if (executable) {
-      return {
-        command: "npx",
-        args: ["-y", "chrome-devtools-mcp@latest"],
-      };
-    }
-
-    try {
-      const proc = spawn("chrome-devtools-mcp", ["--help"], {
-        stdio: "ignore",
-      });
-      const exitCode = await new Promise<number | null>((resolve) => {
-        proc.on("exit", resolve);
-        proc.on("error", () => resolve(null));
-      });
-      if (exitCode === 0) {
-        return {
-          command: "chrome-devtools-mcp",
-          args: [],
-        };
-      }
-    } catch {
-    }
-
-    return {
-      command: "npx",
-      args: ["-y", "chrome-devtools-mcp@latest"],
-    };
   }
 
   private async initializeContext7(

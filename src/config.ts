@@ -39,20 +39,6 @@ const BackgroundConfigSchema = z.object({
   pollInterval: z.number().positive().default(5000),
 });
 
-const ChromeDevToolsSearchSchema = z.object({
-  enabled: z.boolean().default(true),
-  engine: z.enum(['google', 'bing']).default('google'),
-  maxResults: z.number().positive().default(10),
-});
-
-const ChromeDevToolsSchema = z.object({
-  enabled: z.boolean().default(true),
-  executable: z.string().optional(),
-  profile: z.string().optional(),
-  flags: z.array(z.string()).optional(),
-  search: ChromeDevToolsSearchSchema.optional(),
-});
-
 const Context7Schema = z.object({
   enabled: z.boolean().default(true),
   apiKey: z.string().optional(),
@@ -63,7 +49,6 @@ const GrepAppSchema = z.object({
 });
 
 const McpsSchema = z.object({
-  chromeDevTools: ChromeDevToolsSchema.optional(),
   context7: Context7Schema.optional(),
   grepApp: GrepAppSchema.optional(),
 });
@@ -101,7 +86,6 @@ export type Config = z.infer<typeof ConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type ThinkingConfig = z.infer<typeof ThinkingConfigSchema>;
 export type BackgroundConfig = z.infer<typeof BackgroundConfigSchema>;
-export type ChromeDevToolsConfig = z.infer<typeof ChromeDevToolsSchema>;
 export type Context7Config = z.infer<typeof Context7Schema>;
 export type GrepAppConfig = z.infer<typeof GrepAppSchema>;
 export type McpsConfig = z.infer<typeof McpsSchema>;
@@ -140,14 +124,6 @@ const DEFAULT_CONFIG: Config = {
     pollInterval: 5000,
   },
   mcps: {
-    chromeDevTools: {
-      enabled: true,
-      search: {
-        enabled: true,
-        engine: 'google',
-        maxResults: 10,
-      },
-    },
     context7: {
       enabled: true,
     },
@@ -280,10 +256,6 @@ function createDefaultAgentConfig(name: AgentName): AgentConfig {
   });
 }
 
-function defaultChromeExecutable() {
-  return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-}
-
 export function createDefaultAgentConfigs(): Record<AgentName, AgentConfig> {
   return Object.fromEntries(
     AGENT_NAMES.map((name) => [name, createDefaultAgentConfig(name)]),
@@ -298,12 +270,7 @@ export function createUserOpencodeConfigTemplate(): Partial<Config> {
       maxConcurrent: 5,
       pollInterval: 5000,
     },
-    mcps: {
-      chromeDevTools: {
-        enabled: true,
-        executable: defaultChromeExecutable(),
-      },
-    },
+    mcps: {},
   };
 }
 

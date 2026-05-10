@@ -44,7 +44,6 @@ describe('Config System', () => {
 
       expect(config.background?.maxConcurrent).toBe(5);
       expect(config.background?.pollInterval).toBe(5000);
-      expect(config.mcps?.chromeDevTools?.enabled).toBe(true);
       expect(config.mcps?.context7?.enabled).toBe(true);
       expect(config.mcps?.grepApp?.enabled).toBe(true);
       expect(config.tmux?.enabled).toBe(true);
@@ -157,7 +156,6 @@ describe('Config System', () => {
       expect(template.agents?.harambe?.thinking).toEqual({ type: 'enabled', budgetTokens: 32000 });
       expect(template.agents?.tasker?.model).toBe('github-copilot/gemini-3-flash-preview');
       expect(template.agents?.tasker?.thinking).toEqual({ type: 'enabled', budgetTokens: 32000 });
-      expect(template.mcps?.chromeDevTools?.executable).toBe('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
       expect(template.sqlite).toBeUndefined();
       expect(template.tmux).toBeUndefined();
     });
@@ -192,7 +190,6 @@ describe('Config System', () => {
       expect(result.written).toBe(true);
       expect(written.$schema).toBe('https://raw.githubusercontent.com/monkedevlife/monkey-code/refs/heads/master/schemas/monkey-code-config.schema.json');
       expect(written.background?.maxConcurrent).toBe(11);
-        expect(written.mcps?.chromeDevTools?.executable).toBe('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
         expect(written.agents?.punch?.temperature).toBe(0.9);
         expect(written.agents?.punch?.model).toBe('github-copilot/gpt-5.4');
         expect(written.agents?.punch?.reasoningEffort).toBe('medium');
@@ -213,7 +210,6 @@ describe('Config System', () => {
 
       expect(config.background?.maxConcurrent).toBe(10);
       expect(config.background?.pollInterval).toBe(5000); // From defaults
-      expect(config.mcps?.chromeDevTools?.enabled).toBe(true); // From defaults
     });
 
     it('should validate config against schema', () => {
@@ -273,39 +269,10 @@ describe('Config System', () => {
       expect(config.sqlite?.maxMemoryItems).toBe(5000);
     });
 
-    it('should allow Chrome DevTools configuration', () => {
-      mkdirSync('.opencode', { recursive: true });
-      const projectConfig = {
-        mcps: {
-          chromeDevTools: {
-            enabled: true,
-            executable: '/usr/bin/chromium',
-            profile: 'Default',
-            flags: ['--no-sandbox'],
-            search: {
-              enabled: true,
-              engine: 'bing',
-              maxResults: 20,
-            },
-          },
-        },
-      };
-      writeFileSync('.opencode/monkey-code.json', JSON.stringify(projectConfig));
-
-      const config = loadConfig();
-
-      expect(config.mcps?.chromeDevTools?.executable).toBe('/usr/bin/chromium');
-      expect(config.mcps?.chromeDevTools?.profile).toBe('Default');
-      expect(config.mcps?.chromeDevTools?.flags).toEqual(['--no-sandbox']);
-      expect(config.mcps?.chromeDevTools?.search?.engine).toBe('bing');
-      expect(config.mcps?.chromeDevTools?.search?.maxResults).toBe(20);
-    });
-
     it('should allow disabling MCPs', () => {
       mkdirSync('.opencode', { recursive: true });
       const projectConfig = {
         mcps: {
-          chromeDevTools: { enabled: false },
           context7: { enabled: false },
           grepApp: { enabled: false },
         },
@@ -314,7 +281,6 @@ describe('Config System', () => {
 
       const config = loadConfig();
 
-      expect(config.mcps?.chromeDevTools?.enabled).toBe(false);
       expect(config.mcps?.context7?.enabled).toBe(false);
       expect(config.mcps?.grepApp?.enabled).toBe(false);
     });
@@ -359,14 +325,6 @@ describe('Config System', () => {
 
       expect(config.sqlite?.vectorDimensions).toBe(1536);
       expect(config.sqlite?.maxMemoryItems).toBe(10000);
-    });
-
-    it('should have correct default values for chrome devtools search', () => {
-      const config = loadConfig();
-
-      expect(config.mcps?.chromeDevTools?.search?.enabled).toBe(true);
-      expect(config.mcps?.chromeDevTools?.search?.engine).toBe('google');
-      expect(config.mcps?.chromeDevTools?.search?.maxResults).toBe(10);
     });
 
     it('should allow partial agent configs', () => {
@@ -469,22 +427,6 @@ describe('Config System', () => {
       expect(() => loadConfig()).toThrow();
     });
 
-    it('should validate engine enum values', () => {
-      mkdirSync('.opencode', { recursive: true });
-      const invalidConfig = {
-        mcps: {
-          chromeDevTools: {
-            search: {
-              engine: 'yahoo', // Invalid: must be 'google' or 'bing'
-            },
-          },
-        },
-      };
-      writeFileSync('.opencode/monkey-code.json', JSON.stringify(invalidConfig));
-
-      expect(() => loadConfig()).toThrow();
-    });
-
     it('should allow context7 API key', () => {
       mkdirSync('.opencode', { recursive: true });
       const projectConfig = {
@@ -579,11 +521,6 @@ describe('Config System', () => {
           pollInterval: 3000,
         },
         mcps: {
-          chromeDevTools: {
-            enabled: true,
-            executable: '/usr/bin/chrome',
-            search: { enabled: true, engine: 'google', maxResults: 15 },
-          },
           context7: { enabled: true, apiKey: 'key' },
           grepApp: { enabled: false },
         },

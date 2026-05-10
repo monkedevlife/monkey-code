@@ -3,7 +3,6 @@ export type {
   AgentConfig,
   ThinkingConfig,
   BackgroundConfig,
-  ChromeDevToolsConfig,
   Context7Config,
   GrepAppConfig,
   McpsConfig,
