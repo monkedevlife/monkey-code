@@ -5,6 +5,7 @@ import {
   readTranscriptEntries,
   formatTranscriptProgress,
 } from '../hooks/transcript.js';
+import type { DelegatedTaskStore, DelegatedTaskRecord } from './delegated-task-store.js';
 
 export interface BackgroundOutputParams {
   taskId: string;
@@ -47,7 +48,8 @@ function isTerminal(status: string): boolean {
 
 export async function getBackgroundOutput(
   manager: BackgroundManager,
-  params: BackgroundOutputParams
+  params: BackgroundOutputParams,
+  delegatedTaskStore?: DelegatedTaskStore,
 ): Promise<BackgroundOutputResult> {
   const { taskId, wait = false, timeout = 30000 } = params;
 
@@ -56,6 +58,14 @@ export async function getBackgroundOutput(
   }
 
   const startTime = new Date().toISOString();
+  const delegatedTask = delegatedTaskStore?.getTask(taskId);
+  if (delegatedTask) {
+    if (!wait || isTerminal(delegatedTask.status)) {
+      return formatDelegatedTaskResult(delegatedTask, startTime, wait, 0);
+    }
+    return await waitForDelegatedTaskCompletion(delegatedTaskStore!, taskId, startTime, timeout);
+  }
+
   const task = await manager.getStatus(taskId);
 
   if (task) {
@@ -73,6 +83,36 @@ export async function getBackgroundOutput(
   }
 
   throw new Error(`Task not found: ${taskId}`);
+}
+
+async function waitForDelegatedTaskCompletion(
+  delegatedTaskStore: DelegatedTaskStore,
+  taskId: string,
+  startTime: string,
+  timeout: number,
+): Promise<BackgroundOutputResult> {
+  const waitStart = Date.now();
+  const endTime = waitStart + timeout;
+
+  while (Date.now() < endTime) {
+    const task = delegatedTaskStore.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    if (isTerminal(task.status)) {
+      return formatDelegatedTaskResult(task, startTime, true, Date.now() - waitStart);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  const task = delegatedTaskStore.getTask(taskId);
+  if (!task) {
+    throw new Error(`Task not found: ${taskId}`);
+  }
+
+  return formatDelegatedTaskResult(task, startTime, true, Date.now() - waitStart);
 }
 
 async function waitForTaskCompletion(
@@ -235,6 +275,53 @@ function formatTaskResult(
     progress,
     toolCallCount: progress ? readTranscriptEntries(task.id).length : undefined,
     nextActions
+  };
+}
+
+function formatDelegatedTaskResult(
+  task: DelegatedTaskRecord,
+  startTime: string,
+  waited: boolean,
+  waitTimeMs: number,
+): BackgroundOutputResult {
+  const output = task.output;
+  const outputLength = output?.length ?? 0;
+  const outputTruncated = outputLength > MAX_OUTPUT_LENGTH;
+  const progress = transcriptExists(task.sessionId)
+    ? formatTranscriptProgress(readTranscriptEntries(task.sessionId))
+    : undefined;
+
+  const nextActions: BackgroundOutputResult['nextActions'] = [];
+
+  if (isRunning(task.status)) {
+    nextActions.push({
+      action: 'poll-again',
+      description: 'Check delegated task progress again',
+      tool: 'background-output',
+      params: { taskId: task.id },
+    });
+    nextActions.push({
+      action: 'cancel',
+      description: 'Cancel the delegated session',
+      tool: 'background-cancel',
+      params: { taskId: task.id },
+    });
+  }
+
+  return {
+    taskId: task.id,
+    status: task.status,
+    output: outputTruncated && output ? output.slice(0, MAX_OUTPUT_LENGTH) : output,
+    error: task.error,
+    startTime,
+    endTime: task.completedAt,
+    waited,
+    waitTimeMs: waited ? waitTimeMs : undefined,
+    outputTruncated,
+    outputLength,
+    progress,
+    toolCallCount: progress ? readTranscriptEntries(task.sessionId).length : undefined,
+    nextActions,
   };
 }
 

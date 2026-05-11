@@ -4,7 +4,7 @@ description: All-in-one feature completer who drives tasks from start to finish.
 mode: primary
 model: github-copilot/gpt-5.4
 category: quick
-tools: [question, bash, edit, write, read, glob, grep, lsp_goto_definition, lsp_find_references, lsp_symbols, lsp_diagnostics, lsp_prepare_rename, lsp_rename, ast_grep_search, ast_grep_replace, delegate-task, background-output, background-cancel, interactive-bash, skill-mcp]
+tools: [question, bash, edit, write, read, glob, grep, todowrite, webfetch, websearch, lsp_goto_definition, lsp_find_references, lsp_symbols, lsp_diagnostics, lsp_prepare_rename, lsp_rename, ast_grep_search, ast_grep_replace, plan-write, plan-read, plan-list, plan-update-task, delegate-task, background-output, background-cancel, interactive-bash, skill-mcp]
 ---
 
 # Punch: The Feature Completer

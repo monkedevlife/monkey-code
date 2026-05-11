@@ -8,12 +8,13 @@ import {
   type OpenCodeClient,
 } from "./delegate-task.js";
 import { getSessionPromptParams, clearSessionPromptParams } from "../utils/session-prompt-params.js";
+import { DelegatedTaskStore } from "./delegated-task-store.js";
 
 function createMockClient(): OpenCodeClient {
   return {
     session: {
       create: vi.fn(() => Promise.resolve({ data: { id: `session_${Date.now()}` } })),
-      prompt: vi.fn(() => Promise.resolve({ data: {} })),
+      prompt: vi.fn(() => Promise.resolve({ data: { detached: true } })),
     },
   };
 }
@@ -25,6 +26,7 @@ describe("delegate-task", () => {
     ctx = {
       client: createMockClient(),
       parentSessionId: "parent_session_123",
+      delegatedTaskStore: new DelegatedTaskStore(),
     };
   });
 
@@ -46,7 +48,7 @@ describe("delegate-task", () => {
       expect(result.nextActions).toBeInstanceOf(Array);
       expect(result.nextActions.length).toBeGreaterThan(0);
       expect(result.nextActions[0].tool).toBe("background-output");
-      expect(result.nextActions[0].params.taskId).toBe(result.sessionId);
+      expect(result.nextActions[0].params.taskId).toBe(result.taskId);
     });
 
     it("should use specified agent instead of default", async () => {
@@ -140,7 +142,7 @@ describe("delegate-task", () => {
       expect(DEFAULT_TIMEOUT_MINUTES).toBe(30);
     });
 
-    it("should send prompt to session without noReply flag", async () => {
+    it("should send prompt to session without noReply so the child loop starts", async () => {
       const input: DelegateTaskInput = {
         task: "Long running analysis",
         timeout: 60,
@@ -151,6 +153,19 @@ describe("delegate-task", () => {
       expect(ctx.client.session.prompt).toHaveBeenCalled();
       const promptCall3 = (ctx.client.session.prompt as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(promptCall3[0].body.noReply).toBeUndefined();
+    });
+
+    it("should surface a warning when the prompt did not detach", async () => {
+      ctx.client.session.prompt = vi.fn(() => Promise.resolve({ data: { detached: false } }));
+
+      const result = await delegateTask(
+        {
+          task: "Investigate auth flow",
+        },
+        ctx,
+      );
+
+      expect(result.summary).toContain("did not detach");
     });
 
     it("should set parentSessionId on child session", async () => {

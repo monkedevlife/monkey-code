@@ -427,10 +427,19 @@ Spawn a background task assigned to a monkey agent.
 
 ```json
 {
-  "taskId": "task-abc123",
+  "taskId": "sess-xyz789",
   "sessionId": "sess-xyz789",
-  "status": "pending",
-  "message": "Task delegated to agent 'harambe' with session sess-xyz789. Task ID: task-abc123"
+  "status": "in_progress",
+  "summary": "Task delegated to agent 'harambe'",
+  "nextActions": [
+    {
+      "action": "check-status",
+      "tool": "background-output",
+      "params": {
+        "taskId": "sess-xyz789"
+      }
+    }
+  ]
 }
 ```
 
@@ -452,7 +461,7 @@ Retrieve output from a background task.
 {
   "tool": "background-output",
   "params": {
-    "taskId": "task-abc123",
+    "taskId": "sess-xyz789",
     "wait": true,
     "timeout": 60000
   }
@@ -463,7 +472,7 @@ Retrieve output from a background task.
 
 ```json
 {
-  "taskId": "task-abc123",
+  "taskId": "sess-xyz789",
   "status": "completed",
   "output": "...",
   "error": null,
@@ -491,7 +500,7 @@ Cancel a running or pending background task.
 {
   "tool": "background-cancel",
   "params": {
-    "taskId": "task-abc123"
+    "taskId": "sess-xyz789"
   }
 }
 ```
@@ -501,8 +510,8 @@ Cancel a running or pending background task.
 ```json
 {
   "success": true,
-  "taskId": "task-abc123",
-  "message": "Task task-abc123 has been cancelled"
+  "taskId": "sess-xyz789",
+  "summary": "Task sess-xyz789 cancelled"
 }
 ```
 

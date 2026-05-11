@@ -22,6 +22,7 @@ import { createStartWorkHook } from './hooks/start-work.js';
 import { createPlanContinuationHook } from './hooks/plan-continuation.js';
 import { createStopAllHook } from './hooks/stop-all.js';
 import { handleChatParams } from './hooks/chat-params.js';
+import { DelegatedTaskStore } from './tools/delegated-task-store.js';
 
 interface PluginState {
   config?: Config;
@@ -30,11 +31,13 @@ interface PluginState {
   interactiveManager?: InteractiveManager;
   skillMcpManager?: SkillMcpManager;
   backgroundCancelTool?: Awaited<ReturnType<typeof createBackgroundCancelTool>>;
+  delegatedTaskStore: DelegatedTaskStore;
   currentSessionId?: string;
   isInitialized: boolean;
 }
 
 const pluginState: PluginState = {
+  delegatedTaskStore: new DelegatedTaskStore(),
   isInitialized: false
 };
 
@@ -74,7 +77,7 @@ async function initializePlugin(context: PluginContext): Promise<void> {
   }
   pluginState.skillMcpManager = skillMcpManager;
 
-  const backgroundCancelTool = await createBackgroundCancelTool(backgroundManager, sqlite);
+  const backgroundCancelTool = await createBackgroundCancelTool(backgroundManager, sqlite, pluginState.delegatedTaskStore, createMockOpenCodeClient());
   pluginState.backgroundCancelTool = backgroundCancelTool;
 
   pluginState.currentSessionId = context.sessionId;
@@ -109,6 +112,7 @@ async function shutdownPlugin(): Promise<void> {
   pluginState.interactiveManager = undefined;
   pluginState.skillMcpManager = undefined;
   pluginState.backgroundCancelTool = undefined;
+  pluginState.delegatedTaskStore.clear();
   pluginState.currentSessionId = undefined;
   pluginState.isInitialized = false;
 }
@@ -118,7 +122,8 @@ function createMockOpenCodeClient(): any {
     session: {
       get: async () => ({ data: { directory: process.cwd() } }),
       create: async () => ({ data: { id: `mock-session-${Date.now()}` } }),
-      prompt: async () => ({ data: {} })
+      prompt: async () => ({ data: { detached: true } }),
+      abort: async () => ({ data: {} })
     }
   };
 }
@@ -160,7 +165,8 @@ async function handleDelegateTask(params: Record<string, unknown>): Promise<Dele
     client,
     parentSessionId: pluginState.currentSessionId,
     agentConfig: resolveAgentConfig(input.agent ?? 'punch'),
-    resolveAgentConfig
+    resolveAgentConfig,
+    delegatedTaskStore: pluginState.delegatedTaskStore,
   };
 
   return await delegateTask(input, ctx);
@@ -177,7 +183,7 @@ async function handleBackgroundOutput(params: Record<string, unknown>): Promise<
     timeout: params.timeout as number | undefined
   };
 
-  return await getBackgroundOutput(pluginState.backgroundManager, outputParams);
+  return await getBackgroundOutput(pluginState.backgroundManager, outputParams, pluginState.delegatedTaskStore);
 }
 
 async function handleBackgroundCancel(params: Record<string, unknown>): Promise<BackgroundCancelResult> {

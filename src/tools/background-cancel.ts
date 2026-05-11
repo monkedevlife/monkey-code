@@ -1,5 +1,7 @@
 import type { BackgroundManager } from '../managers/BackgroundManager.js';
 import type { SQLiteClient } from '../utils/sqlite-client.js';
+import type { OpenCodeClient } from './delegate-task.js';
+import type { DelegatedTaskStore } from './delegated-task-store.js';
 
 export interface BackgroundCancelParams {
   taskId: string;
@@ -46,10 +48,14 @@ function makeNextActions(taskId?: string): BackgroundCancelResult['nextActions']
 export class BackgroundCancelTool {
   private backgroundManager: BackgroundManager;
   private sqlite: SQLiteClient;
+  private delegatedTaskStore?: DelegatedTaskStore;
+  private client?: OpenCodeClient;
 
-  constructor(backgroundManager: BackgroundManager, sqlite: SQLiteClient) {
+  constructor(backgroundManager: BackgroundManager, sqlite: SQLiteClient, delegatedTaskStore?: DelegatedTaskStore, client?: OpenCodeClient) {
     this.backgroundManager = backgroundManager;
     this.sqlite = sqlite;
+    this.delegatedTaskStore = delegatedTaskStore;
+    this.client = client;
   }
 
   async execute(params: BackgroundCancelParams): Promise<BackgroundCancelResult> {
@@ -89,6 +95,52 @@ export class BackgroundCancelTool {
   }
 
   private async cancelSingleTask(taskId: string): Promise<BackgroundCancelResult> {
+    const delegatedTask = this.delegatedTaskStore?.getTask(taskId);
+    if (delegatedTask) {
+      if (delegatedTask.status === 'completed' || delegatedTask.status === 'failed' || delegatedTask.status === 'cancelled') {
+        return {
+          success: false,
+          taskId,
+          cancelledCount: 0,
+          summary: `Cannot cancel task in ${delegatedTask.status} state`,
+          cancelledTasks: [],
+          notFoundTasks: [],
+          alreadyCompletedTasks: [taskId],
+          error: `Task is already ${delegatedTask.status}`,
+          nextActions: makeNextActions(taskId)
+        };
+      }
+
+      if (!this.client?.session.abort) {
+        return {
+          success: false,
+          taskId,
+          cancelledCount: 0,
+          summary: 'Delegated task cancellation is unavailable in this runtime',
+          cancelledTasks: [],
+          notFoundTasks: [],
+          alreadyCompletedTasks: [],
+          error: 'Session abort is not supported by the current client',
+          nextActions: makeNextActions(taskId)
+        };
+      }
+
+      await this.client.session.abort({ path: { id: delegatedTask.sessionId } });
+
+      this.delegatedTaskStore?.markCancelled(taskId, 'Cancelled by background-cancel');
+
+      return {
+        success: true,
+        taskId,
+        cancelledCount: 1,
+        summary: `Task ${taskId} cancelled`,
+        cancelledTasks: [taskId],
+        notFoundTasks: [],
+        alreadyCompletedTasks: [],
+        nextActions: makeNextActions(taskId)
+      };
+    }
+
     const task = await this.sqlite.getTask(taskId);
 
     if (!task) {
@@ -134,6 +186,7 @@ export class BackgroundCancelTool {
   }
 
   private async cancelAllTasks(): Promise<BackgroundCancelResult> {
+    const delegatedTasks = this.delegatedTaskStore?.listActiveTasks() ?? [];
     const allTasks = await this.backgroundManager.listTasks();
     const cancellableTasks = allTasks.filter(
       (task) => task.status !== 'completed' && task.status !== 'failed'
@@ -151,9 +204,29 @@ export class BackgroundCancelTool {
       }
     }
 
+    for (const task of delegatedTasks) {
+      try {
+        if (!this.client?.session.abort) {
+          errors.push(`Failed to cancel ${task.id}: session abort is not supported by the current client`);
+          continue;
+        }
+        await this.client.session.abort({ path: { id: task.sessionId } });
+        this.delegatedTaskStore?.markCancelled(task.id, 'Cancelled by background-cancel');
+        cancelledTasks.push(task.id);
+      } catch (error) {
+        errors.push(`Failed to cancel ${task.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
     const alreadyCompletedTasks = allTasks
       .filter((task) => task.status === 'completed' || task.status === 'failed')
       .map((task) => task.id);
+
+    alreadyCompletedTasks.push(
+      ...((this.delegatedTaskStore?.listTasks() ?? [])
+        .filter((task) => task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled')
+        .map((task) => task.id))
+    );
 
     if (errors.length > 0) {
       return {
@@ -182,9 +255,11 @@ export class BackgroundCancelTool {
 
 export async function createBackgroundCancelTool(
   backgroundManager: BackgroundManager,
-  sqlite: SQLiteClient
+  sqlite: SQLiteClient,
+  delegatedTaskStore?: DelegatedTaskStore,
+  client?: OpenCodeClient,
 ): Promise<BackgroundCancelTool> {
-  return new BackgroundCancelTool(backgroundManager, sqlite);
+  return new BackgroundCancelTool(backgroundManager, sqlite, delegatedTaskStore, client);
 }
 
 export default BackgroundCancelTool;

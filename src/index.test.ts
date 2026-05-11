@@ -64,6 +64,7 @@ describe('Monkey Code Plugin', () => {
     const punch = readBundledAgent('punch');
 
     expect(punch).toBeDefined();
+    expect(punch?.tools).toEqual(['question', 'bash', 'edit', 'write', 'read', 'glob', 'grep', 'todowrite', 'webfetch', 'websearch', 'lsp_goto_definition', 'lsp_find_references', 'lsp_symbols', 'lsp_diagnostics', 'lsp_prepare_rename', 'lsp_rename', 'ast_grep_search', 'ast_grep_replace', 'plan-write', 'plan-read', 'plan-list', 'plan-update-task', 'delegate-task', 'background-output', 'background-cancel', 'interactive-bash', 'skill-mcp']);
     expect(punch?.permission).toEqual({
       '*': 'deny',
       question: 'allow',
@@ -72,9 +73,16 @@ describe('Monkey Code Plugin', () => {
       read: 'allow',
       glob: 'allow',
       grep: 'allow',
+      todowrite: 'allow',
+      webfetch: 'allow',
+      websearch: 'allow',
       lsp: 'allow',
       ast_grep_search: 'allow',
       ast_grep_replace: 'allow',
+      'plan-write': 'allow',
+      'plan-read': 'allow',
+      'plan-list': 'allow',
+      'plan-update-task': 'allow',
       'delegate-task': 'allow',
       'background-output': 'allow',
       'background-cancel': 'allow',
@@ -288,4 +296,3 @@ describe('caveman chat hook', () => {
   });
 
 });
-

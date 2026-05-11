@@ -3,6 +3,7 @@ import {
   setSessionPromptParams,
   agentConfigToPromptParams,
 } from "../utils/session-prompt-params.js";
+import type { DelegatedTaskStore } from "./delegated-task-store.js";
 
 export interface DelegateTaskInput {
   task: string;
@@ -33,6 +34,11 @@ export interface DelegateTaskOutput {
     tool: string;
     params: Record<string, string>;
   }>;
+}
+
+interface DelegatePromptResult {
+  detached?: boolean;
+  sessionID?: string;
 }
 
 export interface SessionPermissionRule {
@@ -66,7 +72,8 @@ export interface OpenCodeClient {
         tools?: Record<string, boolean>;
         model?: { providerID: string; modelID: string };
       };
-    }) => Promise<{ data?: unknown }>;
+    }) => Promise<{ data?: DelegatePromptResult | unknown }>;
+    abort?: (params: { path: { id: string } }) => Promise<unknown>;
   };
 }
 
@@ -77,6 +84,7 @@ export interface DelegateTaskContext {
   resolveAgentConfig?: (agentName: string) => AgentConfig | undefined;
   worktree?: string;
   directory?: string;
+  delegatedTaskStore?: DelegatedTaskStore;
 }
 
 const DEFAULT_AGENT = "punch";
@@ -222,7 +230,7 @@ export async function delegateTask(
 
   const systemPrompt = buildSystemPrompt(input, agent === SCOUT_AGENT, resolution.routingReason);
 
-  await ctx.client.session.prompt({
+  const promptRes = await ctx.client.session.prompt({
     path: { id: sessionId },
     body: {
       agent,
@@ -237,6 +245,28 @@ export async function delegateTask(
     },
   });
 
+  const promptData = promptRes.data as DelegatePromptResult | undefined;
+  const detached = promptData?.detached !== false;
+
+  const createdAt = new Date().toISOString();
+  ctx.delegatedTaskStore?.createTask({
+    taskId: sessionId,
+    sessionId,
+    parentSessionId: ctx.parentSessionId,
+    agent,
+    requestedAgent: resolution.requestedAgent !== agent ? resolution.requestedAgent : undefined,
+    description: input.task,
+    timeout,
+    createdAt,
+    routing: resolution.routingReason
+      ? {
+          originalAgent: resolution.requestedAgent,
+          finalAgent: agent,
+          reason: resolution.routingReason,
+        }
+      : undefined,
+  });
+
   return {
     taskId: sessionId,
     sessionId,
@@ -244,10 +274,10 @@ export async function delegateTask(
     agent,
     requestedAgent: resolution.requestedAgent !== agent ? resolution.requestedAgent : undefined,
     timeout,
-    createdAt: new Date().toISOString(),
+    createdAt,
     summary: resolution.routingReason
-      ? `Exploration task auto-routed from '${resolution.requestedAgent}' to '${agent}'`
-      : `Task delegated to agent '${agent}'`,
+      ? `Exploration task auto-routed from '${resolution.requestedAgent}' to '${agent}'${detached ? "" : " (warning: child prompt did not detach)"}`
+      : `Task delegated to agent '${agent}'${detached ? "" : " (warning: child prompt did not detach)"}`,
     routing: resolution.routingReason
       ? {
           originalAgent: resolution.requestedAgent,

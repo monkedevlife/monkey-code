@@ -1,12 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BackgroundCancelTool, BackgroundCancelParams } from "./background-cancel";
 import { BackgroundManager, LaunchTaskInput } from "../managers/BackgroundManager";
 import { SQLiteClient } from "../utils/sqlite-client";
+import { DelegatedTaskStore } from "./delegated-task-store";
+import type { OpenCodeClient } from "./delegate-task";
 
 describe("BackgroundCancelTool", () => {
   let sqlite: SQLiteClient;
   let backgroundManager: BackgroundManager;
   let cancelTool: BackgroundCancelTool;
+  let delegatedTaskStore: DelegatedTaskStore;
+  let client: OpenCodeClient;
 
   beforeEach(async () => {
     sqlite = new SQLiteClient(":memory:");
@@ -15,7 +19,15 @@ describe("BackgroundCancelTool", () => {
       pollIntervalMs: 100,
     });
     await backgroundManager.initialize();
-    cancelTool = new BackgroundCancelTool(backgroundManager, sqlite);
+    delegatedTaskStore = new DelegatedTaskStore();
+    client = {
+      session: {
+        create: async () => ({ data: { id: 'unused' } }),
+        prompt: async () => ({ data: { detached: true } }),
+        abort: vi.fn(async () => ({ data: {} })),
+      },
+    };
+    cancelTool = new BackgroundCancelTool(backgroundManager, sqlite, delegatedTaskStore, client);
   });
 
   afterEach(async () => {
@@ -24,6 +36,49 @@ describe("BackgroundCancelTool", () => {
   });
 
   describe("execute - single task cancellation", () => {
+    it("should cancel a delegated task by aborting its session", async () => {
+      const task = delegatedTaskStore.createTask({
+        taskId: 'session-delegated',
+        sessionId: 'session-delegated',
+        parentSessionId: 'parent-1',
+        agent: 'punch',
+        description: 'Delegated work',
+        timeout: 30,
+      });
+
+      const result = await cancelTool.execute({ taskId: task.id });
+
+      expect(result.success).toBe(true);
+      expect(result.cancelledTasks).toContain(task.id);
+      expect(delegatedTaskStore.getTask(task.id)?.status).toBe('cancelled');
+      expect(client.session.abort).toHaveBeenCalledWith({ path: { id: 'session-delegated' } });
+    });
+
+    it("should fail delegated cancellation when session abort is unavailable", async () => {
+      const noAbortClient: OpenCodeClient = {
+        session: {
+          create: async () => ({ data: { id: 'unused' } }),
+          prompt: async () => ({ data: { detached: true } }),
+        },
+      };
+      cancelTool = new BackgroundCancelTool(backgroundManager, sqlite, delegatedTaskStore, noAbortClient);
+
+      const task = delegatedTaskStore.createTask({
+        taskId: 'session-no-abort',
+        sessionId: 'session-no-abort',
+        parentSessionId: 'parent-1',
+        agent: 'punch',
+        description: 'Delegated work',
+        timeout: 30,
+      });
+
+      const result = await cancelTool.execute({ taskId: task.id });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not supported');
+      expect(delegatedTaskStore.getTask(task.id)?.status).toBe('in_progress');
+    });
+
     it("should cancel a pending task", async () => {
       const input: LaunchTaskInput = {
         command: "sleep 30",

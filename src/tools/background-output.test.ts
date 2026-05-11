@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getBackgroundOutput, BackgroundOutputParams, BackgroundOutputResult } from "./background-output";
 import { BackgroundManager } from "../managers/BackgroundManager.js";
 import { SQLiteClient } from "../utils/sqlite-client.js";
+import { DelegatedTaskStore } from "./delegated-task-store.js";
 
 describe("getBackgroundOutput", () => {
   let sqlite: SQLiteClient;
   let manager: BackgroundManager;
+  let delegatedTaskStore: DelegatedTaskStore;
 
   beforeEach(async () => {
     sqlite = new SQLiteClient(":memory:");
@@ -13,6 +15,7 @@ describe("getBackgroundOutput", () => {
       concurrencyLimit: 2,
       pollIntervalMs: 100,
     });
+    delegatedTaskStore = new DelegatedTaskStore();
     await manager.initialize();
   });
 
@@ -89,6 +92,28 @@ describe("getBackgroundOutput", () => {
   });
 
   describe("completed task", () => {
+    it("should return delegated task output", async () => {
+      const task = delegatedTaskStore.createTask({
+        sessionId: 'session-delegated',
+        parentSessionId: 'parent-1',
+        agent: 'punch',
+        description: 'Delegated work',
+        timeout: 30,
+      });
+
+      delegatedTaskStore.markCompletedBySession('session-delegated', 'delegated output');
+
+      const result = await getBackgroundOutput(
+        manager,
+        { taskId: task.id },
+        delegatedTaskStore,
+      );
+
+      expect(result.taskId).toBe(task.id);
+      expect(result.status).toBe('completed');
+      expect(result.output).toContain('delegated output');
+    });
+
     it("should return completed task output", async () => {
       const taskId = await manager.launch({
         command: "echo 'hello world'",

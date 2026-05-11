@@ -19,9 +19,11 @@ import { handleChatParams } from './hooks/chat-params.js';
 import { createReviewPlanHook } from './hooks/review-plan.js';
 import { createBrainstormHook } from './hooks/brainstorm.js';
 import { createToolTranscriptHook } from './hooks/tool-transcript-hook.js';
+import { readTranscriptEntries, formatTranscriptProgress } from './hooks/transcript.js';
 import { handleOpenSpecRead, handleOpenSpecWrite, handleOpenSpecList } from './tools/openspec.js';
 import { readBundledAgent, buildBundledAgentPermission } from './bundled-agents.js';
 import { getCavemanInstructions, type CavemanLevel, CAVEMAN_LEVELS } from './caveman.js';
+import { DelegatedTaskStore } from './tools/delegated-task-store.js';
 
 const agents = ['punch', 'harambe', 'caesar', 'george', 'tasker', 'scout', 'builder', 'openspec-plan'] as const;
 const schema = tool.schema;
@@ -35,10 +37,12 @@ type PluginState = {
   skillMcpManager?: SkillMcpManager;
   backgroundCancelTool?: Awaited<ReturnType<typeof createBackgroundCancelTool>>;
   cavemanRuntime?: CavemanRuntimeState;
+  delegatedTaskStore: DelegatedTaskStore;
   isInitialized: boolean;
 };
 
 const pluginState: PluginState = {
+  delegatedTaskStore: new DelegatedTaskStore(),
   isInitialized: false,
 };
 
@@ -263,6 +267,11 @@ function createClientAdapter(input: Parameters<Plugin>[0]) {
         });
         return { data: result.data };
       },
+      abort: input.client.session.abort
+        ? async (params: { path: { id: string } }) => {
+            return input.client.session.abort({ path: { id: params.path.id } });
+          }
+        : undefined,
     },
   };
 }
@@ -303,7 +312,7 @@ async function initializePlugin(input: Parameters<Plugin>[0]) {
       pluginState.backgroundManager = backgroundManager;
       pluginState.interactiveManager = interactiveManager;
       pluginState.skillMcpManager = skillMcpManager;
-      pluginState.backgroundCancelTool = await createBackgroundCancelTool(backgroundManager, sqlite);
+      pluginState.backgroundCancelTool = await createBackgroundCancelTool(backgroundManager, sqlite, pluginState.delegatedTaskStore, createClientAdapter(input));
       pluginState.isInitialized = true;
     } catch (error) {
       await skillMcpManager.cleanup().catch(() => undefined);
@@ -346,6 +355,7 @@ async function shutdownPlugin() {
   pluginState.interactiveManager = undefined;
   pluginState.skillMcpManager = undefined;
   pluginState.backgroundCancelTool = undefined;
+  pluginState.delegatedTaskStore.clear();
   pluginState.isInitialized = false;
 }
 
@@ -357,12 +367,13 @@ async function handleDelegateTaskRequest(args: DelegateTaskInput, sessionID: str
     resolveAgentConfig,
     worktree: input.worktree,
     directory: input.directory,
+    delegatedTaskStore: pluginState.delegatedTaskStore,
   });
 }
 
 async function handleBackgroundOutputRequest(args: BackgroundOutputParams) {
   if (!pluginState.backgroundManager) throw new Error('Plugin not initialized');
-  return getBackgroundOutput(pluginState.backgroundManager, args);
+  return getBackgroundOutput(pluginState.backgroundManager, args, pluginState.delegatedTaskStore);
 }
 
 async function handleBackgroundCancelRequest(args: BackgroundCancelParams) {
@@ -658,6 +669,19 @@ export const server: Plugin = async (input) => {
 
         const sessionID = ((event as { properties?: Record<string, unknown> }).properties?.sessionID as string | undefined) ?? '';
         if (sessionID) {
+          const delegatedTask = pluginState.delegatedTaskStore.getTaskBySessionId(sessionID);
+          if (delegatedTask) {
+            const entries = readTranscriptEntries(sessionID);
+            const latestOutput = formatTranscriptProgress(entries) || undefined;
+            const completedTask = pluginState.delegatedTaskStore.markCompletedBySession(sessionID, latestOutput);
+            if (completedTask) {
+              pluginState.delegatedTaskStore.queueNotification(
+                delegatedTask.parentSessionId,
+                `<system-reminder>\n[BACKGROUND TASK COMPLETED]\n**ID:** \`${delegatedTask.id}\`\n**Description:** ${delegatedTask.description}\n\nUse \`background-output\` with \`taskId=\"${delegatedTask.id}\"\` to retrieve the result.\n</system-reminder>`
+              );
+            }
+          }
+
           const planContinuationHook = pluginState.sqlite
             ? createPlanContinuationHook({
                 sqlite: pluginState.sqlite,
@@ -688,6 +712,13 @@ export const server: Plugin = async (input) => {
         .join(' ') ?? '';
       const textLower = messageText.toLowerCase().trim();
       const outputParts = (output as { parts: Array<{ type: string; text?: string }> }).parts;
+      const delegatedNotifications = pluginState.delegatedTaskStore.consumeNotifications((hookInput as { sessionID: string }).sessionID);
+      if (delegatedNotifications.length > 0) {
+        outputParts.unshift({
+          type: 'text',
+          text: delegatedNotifications.join('\n\n'),
+        });
+      }
       const cavemanSlashMatch = textLower.match(/^\/caveman(?:\s+(lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|wenyan|stop|off))?$/);
       const cavemanNaturalOff = /^(stop caveman|deactivate caveman|normal mode|disable caveman)\b/.test(textLower);
       const cavemanNaturalOn = /^(activate caveman|turn on caveman)\b/.test(textLower);
