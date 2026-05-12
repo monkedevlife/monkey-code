@@ -69,6 +69,12 @@ function mergeBundledPermission(
   };
 }
 
+function buildAgentToolsConfig(tools: string[] | undefined) {
+  if (!tools?.length) return undefined;
+
+  return Object.fromEntries(tools.map((toolName) => [toolName, true]));
+}
+
 function applyMonkeyAgents(config: OpenCodeConfig) {
   const mutableConfig = config as OpenCodeConfig & {
     agent?: Record<string, unknown>;
@@ -104,6 +110,7 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
       const cavemanBlock = getCavemanInstructions(cavemanIntensity as CavemanLevel);
       agentPrompt = cavemanBlock + '\n\n' + agentPrompt;
     }
+    const agentTools = buildAgentToolsConfig(bundled.tools);
     agentConfig[name] = {
       ...existing,
       ...(bundled.description ? { description: bundled.description } : {}),
@@ -111,6 +118,7 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
       ...(bundled.model ? { model: bundled.model } : {}),
       ...(configured?.model ? { model: configured.model } : {}),
       ...(configured?.temperature !== undefined ? { temperature: configured.temperature } : {}),
+      ...(agentTools ? { tools: { ...(existing.tools as Record<string, boolean> | undefined), ...agentTools } } : {}),
       ...(bundled.permission ? { permission: mergeBundledPermission(bundled.permission, existing.permission) } : {}),
       mode: bundled.mode,
     };

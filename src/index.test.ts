@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import monkeyCodePlugin from './index';
 import { buildBundledAgentPermission, readBundledAgent } from './bundled-agents';
 import { getCavemanInstructions, CAVEMAN_LEVELS } from './caveman';
@@ -293,6 +296,29 @@ describe('caveman chat hook', () => {
     const punchPrompt = mockConfig.agent['punch']?.prompt ?? '';
     const cavemanBlock = getCavemanInstructions('full');
     expect(punchPrompt.startsWith(cavemanBlock)).toBe(false);
+  });
+
+  it('adds openspec tools to caesar runtime config when openspec is enabled', async () => {
+    const plugin = await getFreshPlugin();
+    const worktree = mkdtempSync(join(tmpdir(), 'monkey-code-openspec-'));
+    mkdirSync(join(worktree, '.opencode'), { recursive: true });
+    writeFileSync(join(worktree, '.opencode', 'monkey-code.json'), JSON.stringify({ openspec: true }));
+
+    const server = await plugin.server(createMockInput(worktree));
+
+    try {
+      const mockConfig = { agent: {} as Record<string, any> };
+      await server.config(mockConfig);
+
+      expect(mockConfig.agent['caesar']?.tools?.['openspec-read']).toBe(true);
+      expect(mockConfig.agent['caesar']?.tools?.['openspec-write']).toBe(true);
+      expect(mockConfig.agent['caesar']?.tools?.['openspec-list']).toBe(true);
+      expect(mockConfig.agent['caesar']?.permission?.['openspec-read']).toBe('allow');
+      expect(mockConfig.agent['caesar']?.permission?.['openspec-write']).toBe('allow');
+      expect(mockConfig.agent['caesar']?.permission?.['openspec-list']).toBe('allow');
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
   });
 
 });
