@@ -36,7 +36,7 @@ Monkey Code brings a family of monkey-themed AI agents to your OpenCode workflow
 
 ### 1. Install the Plugin
 
-Monkey Code requires [Bun](https://bun.sh) (`>=1.0.0`).
+Monkey Code requires Node.js (`>=20.0.0`) and `pnpm` 11.
 
 ```bash
 # In your OpenCode project
@@ -47,8 +47,8 @@ git clone https://github.com/henrychea/monkey-code.git
 
 # Install dependencies and build
 cd monkey-code
-bun install        # Generates preset templates automatically
-bun run build
+pnpm install       # Generates preset templates automatically
+pnpm build
 ```
 
 ### 2. Configure Your Project
@@ -317,7 +317,7 @@ When set, all plugin data (database, tasks, logs, presets) is stored under that 
 
 ## Provider Presets
 
-On `bun install`, Monkey Code generates starter preset files in `~/.config/monkey-code/presets/`:
+On `pnpm install`, Monkey Code generates starter preset files in `~/.config/monkey-code/presets/`:
 
 ```
 ~/.config/monkey-code/
@@ -686,9 +686,9 @@ Small, atomic tasks with minimal context:
 ## Troubleshooting
 
 ### Plugin Not Loading
-- Ensure the plugin is built: `bun run build`
+- Ensure the plugin is built: `pnpm build`
 - Check that `.opencode/monkey-code.json` exists (can be empty `{}`)
-- Verify Bun version: `bun --version` (requires >=1.0.0)
+- Verify Node version: `node --version` (requires >=20.0.0)
 
 ### Invalid Configuration Errors
 Monkey Code validates configuration on load. Common issues:
@@ -737,7 +737,7 @@ Monkey Code never overwrites existing preset files. To regenerate:
 ```bash
 rm ~/.config/monkey-code/presets/<provider>.json
 rm ~/.config/monkey-code/preset-manifest.json
-bun install
+pnpm install
 ```
 
 ### Custom Config Directory
@@ -745,7 +745,7 @@ To use a custom plugin directory (e.g., for isolated profiles):
 
 ```bash
 export MONKEY_CODE_DIR=./.temp/ocx
-bun install  # Presets will be written to ./.temp/ocx/presets/
+pnpm install  # Presets will be written to ./.temp/ocx/presets/
 ```
 
 All plugin data (database, tasks, logs, presets) will then use this directory.
