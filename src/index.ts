@@ -151,6 +151,39 @@ function applyMonkeyAgents(config: OpenCodeConfig) {
       template: '/brainstorm $ARGUMENTS',
       hints: ['$ARGUMENTS'],
     },
+    'commit-msg': {
+      name: 'commit-msg',
+      description: 'Generate a human-readable commit message from git changes',
+      agent: 'tasker',
+      subtask: true,
+      template: `Load the \`commit\` skill for commit message guidelines.
+
+Then run these git commands to inspect changes:
+- git diff --cached
+- git diff
+- git status --short
+
+Review the changes, then generate a concise human-readable commit message.
+Output ONLY the commit message text.`,
+    },
+    'commit': {
+      name: 'commit',
+      description: 'Generate commit message and commit changes',
+      agent: 'tasker',
+      subtask: true,
+      template: `Load the \`commit\` skill for commit message guidelines.
+
+Then run these git commands to inspect changes:
+- git diff --cached
+- git diff
+- git status --short
+
+Review the changes, then:
+1. Craft a concise human-readable commit message
+2. If nothing is staged but there are unstaged changes, run \`git add -A\`
+3. Run \`git commit -m "<message>"\` with the crafted message
+4. Report the final commit message`,
+    },
   };
 
   for (const name of ['build', 'plan'] as const) {
